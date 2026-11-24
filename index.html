@@ -4,6 +4,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Plate">
 <meta name="theme-color" content="#0f766e">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="apple-touch-icon.png">
 <title>Plate</title>
 <style>
 :root{--bg:#eef3f1;--card:#fff;--ink:#10261f;--mute:#667a73;--line:#e1e9e6;--acc:#0f766e;--accs:#d9efeb;--p:#6366f1;--c:#f59e0b;--f:#ec4899;--bad:#e5484d;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -56,7 +58,12 @@ const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+Stri
 const pd=s=>new Date(s+'T00:00:00'),addD=(s,n)=>{const d=pd(s);d.setDate(d.getDate()+n);return ymd(d)};
 const TODAY=ymd(new Date()),fmt=n=>Math.round(n||0).toLocaleString();
 const ls=(k,v)=>{try{return v===undefined?localStorage.getItem(k):localStorage.setItem(k,v)}catch(e){return null}};
+const DEFAULT_URL='';/* optional: paste your /exec link between the quotes so nobody has to type it */
 let cfg=null;try{cfg=JSON.parse(ls('plate'))}catch(e){}
+const H=new URLSearchParams(location.hash.slice(1)),pre={url:H.get('u')||DEFAULT_URL,key:H.get('k')||'',me:H.get('n')||''};
+if(pre.url&&pre.key&&pre.me){cfg={url:pre.url,key:pre.key,me:pre.me};ls('plate',JSON.stringify(cfg))}
+const keepLink=()=>{if(cfg)try{history.replaceState(null,'','#u='+encodeURIComponent(cfg.url)+'&k='+encodeURIComponent(cfg.key)+'&n='+encodeURIComponent(cfg.me))}catch(e){}};
+keepLink();
 const S={tab:'today',day:TODAY,meals:[],people:{},view:null,ready:false,mode:'week',anchor:TODAY,from:addD(TODAY,-29),to:TODAY,err:''};
 const me=()=>cfg&&cfg.me;
 const goals=w=>{const g=S.people[w]||{},k=g.goalKcal||2000;return{k,p:g.goalP||100,c:k*.5/4,f:k*.3/9}};
@@ -81,7 +88,7 @@ const dayLabel=d=>d===TODAY?'Today':d===addD(TODAY,-1)?'Yesterday':pd(d).toLocal
 /* ---------- screens ---------- */
 function render(){
   const a=$('#app');
-  if(!cfg){a.innerHTML='<h1>Welcome to Plate</h1><p class="note">Connect your shared backend once. You’ll need the web app URL and passcode from the setup guide.</p><div class="card"><label>Web app URL</label><input id="s-url" placeholder="https://script.google.com/macros/s/…/exec"><div style="height:10px"></div><label>Shared passcode</label><input id="s-key" type="password"><div style="height:10px"></div><label>Your name</label><input id="s-me" placeholder="e.g. See"><div class="btns"><button class="pri" data-act="connect">Connect</button></div></div>';return}
+  if(!cfg){a.innerHTML='<h1>Welcome to Plate</h1><p class="note">'+(pre.key?'Almost there – just enter your name.':'Connect once, then you stay signed in.')+'</p><div class="card">'+(DEFAULT_URL?'':'<label>Web app URL</label><input id="s-url" value="'+esc(pre.url)+'" placeholder="https://script.google.com/macros/s/…/exec"><div style="height:10px"></div>')+'<label>Shared passcode</label><input id="s-key" type="password" value="'+esc(pre.key)+'"><div style="height:10px"></div><label>Your name</label><input id="s-me" value="'+esc(pre.me)+'" placeholder="e.g. See"><div class="btns"><button class="pri" data-act="connect">Connect</button></div></div>';return}
   if(S.err){a.innerHTML='<h1>Plate</h1><div class="card empty"><big>🔌</big>'+esc(S.err)+'<div class="btns"><button class="sec" data-act="retry">Try again</button><button class="sec" data-act="reset">Change settings</button></div></div>';return}
   if(!S.ready){a.innerHTML='<h1>Plate</h1><div class="empty">Loading…</div>';return}
   const seg=ids().map(w=>'<button class="'+(w===S.view?'on':'')+'" data-act="view" data-id="'+esc(w)+'">'+esc(w===me()?'You':w)+(S.tab==='today'?'<small>'+fmt(tot(w,S.day).k)+' kcal</small>':'')+'</button>').join('');
@@ -218,7 +225,7 @@ async function save(){
 }
 function goalsSheet(){
   const g=goals(me());
-  $('#layer').innerHTML='<div class="scrim" data-act="scrim"><div class="sheet"><div class="grab"></div><h2>Your daily goals</h2><div class="g2"><div><label>Calories</label><input type="number" inputmode="numeric" id="g-k" value="'+g.k+'"></div><div><label>Protein (g)</label><input type="number" inputmode="numeric" id="g-p" value="'+g.p+'"></div></div><p class="note">Signed in as '+esc(me())+'. Carbs and fat targets are set at 50% and 30% of calories.</p><div class="btns"><button class="sec" data-act="reset">Sign out</button><button class="pri" data-act="savegoals">Save goals</button></div></div></div>';
+  $('#layer').innerHTML='<div class="scrim" data-act="scrim"><div class="sheet"><div class="grab"></div><h2>Your daily goals</h2><div class="g2"><div><label>Calories</label><input type="number" inputmode="numeric" id="g-k" value="'+g.k+'"></div><div><label>Protein (g)</label><input type="number" inputmode="numeric" id="g-p" value="'+g.p+'"></div></div><p class="note">Signed in as '+esc(me())+'. Carbs and fat targets are set at 50% and 30% of calories.</p><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="invite">🔗 Share setup link with partner</button></div><div class="btns"><button class="sec" data-act="reset">Sign out</button><button class="pri" data-act="savegoals">Save goals</button></div></div></div>';
 }
 
 /* ---------- events ---------- */
@@ -226,9 +233,9 @@ document.addEventListener('click',async e=>{
   const el=e.target.closest('[data-act]');if(!el)return;const a=el.dataset.act;
   if(a==='scrim'){if(e.target===el){SH=null;sheet()}return}
   if(a==='connect'){
-    const url=$('#s-url').value.trim(),key=$('#s-key').value,who=$('#s-me').value.trim();
+    const url=DEFAULT_URL||$('#s-url').value.trim(),key=$('#s-key').value,who=$('#s-me').value.trim();
     if(!/^https:\/\//.test(url)||!key||!who)return toast('Fill in all three fields');
-    cfg={url,key,me:who};try{await api('ping');ls('plate',JSON.stringify(cfg));S.ready=false;render();load()}catch(x){cfg=null;toast(x.message==='Failed to fetch'?'Can’t reach that URL':x.message)}return;
+    cfg={url,key,me:who};try{await api('ping');ls('plate',JSON.stringify(cfg));keepLink();S.ready=false;render();load()}catch(x){cfg=null;toast(x.message==='Failed to fetch'?'Can’t reach that URL':x.message)}return;
   }
   if(a==='retry'){S.err='';render();load()}
   else if(a==='reset'){if(confirm('Sign out of this device?')){ls('plate','');cfg=null;S.ready=false;SH=null;$('#layer').innerHTML='';render()}}
@@ -247,6 +254,9 @@ document.addEventListener('click',async e=>{
   else if(a==='mult'){SH.mult=+el.dataset.m;setVals(SH.mult);document.querySelectorAll('.chips button[data-m]').forEach(b=>b.classList.toggle('on',+b.dataset.m===SH.mult))}
   else if(a==='save')save();
   else if(a==='goals')goalsSheet();
+  else if(a==='invite'){const link=location.origin+location.pathname+'#u='+encodeURIComponent(cfg.url)+'&k='+encodeURIComponent(cfg.key);
+    if(navigator.share)navigator.share({title:'Plate',text:'Open this link to join our Plate tracker, then enter your name:',url:link}).catch(()=>{});
+    else if(navigator.clipboard)navigator.clipboard.writeText(link).then(()=>toast('Link copied'))}
   else if(a==='savegoals'){
     const g={who:me(),goalKcal:Math.max(800,Math.round(+$('#g-k').value||2000)),goalP:Math.max(20,Math.round(+$('#g-p').value||100))};
     try{await api('goals',g);S.people[me()]=g;$('#layer').innerHTML='';render();toast('Goals updated')}catch(x){toast('Couldn’t save goals')}
