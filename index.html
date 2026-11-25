@@ -66,6 +66,7 @@ const keepLink=()=>{if(cfg)try{history.replaceState(null,'','#u='+encodeURICompo
 keepLink();
 const S={tab:'today',day:TODAY,meals:[],people:{},view:null,ready:false,mode:'week',anchor:TODAY,from:addD(TODAY,-29),to:TODAY,err:''};
 const me=()=>cfg&&cfg.me;
+try{const c=cfg&&JSON.parse(ls('plate-cache')||'null');if(c&&c.meals){S.meals=c.meals;S.people=c.people||{};S.view=me();S.ready=true;S.seen=new Set(c.meals.map(m=>m.id))}}catch(e){}
 const goals=w=>{const g=S.people[w]||{},k=g.goalKcal||2000;return{k,p:g.goalP||100,c:k*.5/4,f:k*.3/9}};
 const ids=()=>{const a=Object.keys(S.people).filter(x=>x!==me());return[me()].concat(a).slice(0,2)};
 const toast=t=>{const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),3200)};
@@ -75,11 +76,13 @@ async function api(action,data){
 }
 async function load(){
   try{
-    const j=await api('list',{since:addD(TODAY,-400),thumbSince:addD(TODAY,-14)});
+    const j=await api('list',{who:me(),since:addD(TODAY,-400),thumbSince:addD(TODAY,-14)});
+    if(S.seen)j.meals.filter(m=>!S.seen.has(m.id)&&m.who!==me()&&m.ts>Date.now()-864e5).forEach(m=>toast(m.who+' logged '+m.type+': '+m.name+' ('+fmt(m.kcal)+' kcal)'));
+    S.seen=new Set(j.meals.map(m=>m.id));
     S.meals=j.meals;S.people={};j.people.forEach(p=>S.people[p.who]=p);
     if(!S.people[me()]){await api('goals',{who:me(),goalKcal:2000,goalP:100,init:true});S.people[me()]={who:me(),goalKcal:2000,goalP:100}}
-    if(!S.view)S.view=me();S.ready=true;S.err='';
-  }catch(e){if(!S.ready)S.err=e.message==='Failed to fetch'?'Can’t reach the backend. Check the web app URL and your internet connection.':e.message}
+    if(!S.view)S.view=me();S.ready=true;S.err='';ls('plate-cache',JSON.stringify({meals:S.meals,people:S.people}));
+  }catch(e){if(S.ready&&!S.warned){S.warned=1;toast('Couldn’t refresh – showing saved data')}if(!S.ready)S.err=e.message==='Failed to fetch'?'Can’t reach the backend. Check the web app URL and your internet connection.':e.message}
   if(!SH&&!$('#layer').innerHTML)render();
 }
 const tot=(w,d)=>S.meals.filter(m=>m.who===w&&m.day===d).reduce((t,m)=>({k:t.k+m.kcal,p:t.p+m.p,c:t.c+m.c,f:t.f+m.f}),{k:0,p:0,c:0,f:0});
@@ -102,10 +105,10 @@ function today(){
   const v=S.view,g=goals(v),t=tot(v,S.day),own=v===me(),R=52,C=2*Math.PI*R,over=t.k>g.k;
   const mac=(l,x,y,c)=>'<div class="m"><div class="l"><span>'+l+'</span><b>'+fmt(x)+' / '+fmt(y)+' g</b></div><div class="bar"><i style="width:'+Math.min(100,x/y*100)+'%;background:'+c+'"></i></div></div>';
   const ms=S.meals.filter(m=>m.who===v&&m.day===S.day).sort((a,b)=>a.ts-b.ts);
-  const list=ms.length?ms.map(m=>'<div class="meal">'+(m.thumb?'<img alt="" src="'+esc(m.thumb)+'">':'<div class="ph">🍽️</div>')+'<div class="t"><b>'+esc(m.name)+'</b><small>'+esc(m.type)+' · '+new Date(m.ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small><br><small>P '+fmt(m.p)+' · C '+fmt(m.c)+' · F '+fmt(m.f)+' g</small></div><div class="k">'+fmt(m.kcal)+'<small>kcal</small></div>'+(own?'<button class="x" aria-label="Delete" data-act="del" data-id="'+esc(m.id)+'">✕</button>':'')+'</div>').join(''):'<div class="empty"><big>'+(own?'📸':'🍽️')+'</big>'+(own?'Nothing logged yet. Snap your first meal.':esc(v)+' hasn’t logged anything this day.')+'</div>';
+  const list=ms.length?ms.map(m=>'<div class="meal">'+(m.thumb?'<img alt="" src="'+esc(m.thumb)+'">':'<div class="ph">🍽️</div>')+'<div class="t"'+(own?' data-act="edit" data-id="'+esc(m.id)+'" style="cursor:pointer"':'')+'><b>'+esc(m.name)+'</b><small>'+esc(m.type)+' · '+new Date(m.ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small><br><small>P '+fmt(m.p)+' · C '+fmt(m.c)+' · F '+fmt(m.f)+' g</small></div><div class="k">'+fmt(m.kcal)+'<small>kcal</small></div>'+(own?'<button class="x" aria-label="Delete" data-act="del" data-id="'+esc(m.id)+'">✕</button>':'')+'</div>').join(''):'<div class="empty"><big>'+(own?'📸':'🍽️')+'</big>'+(own?'Nothing logged yet. Snap your first meal.':esc(v)+' hasn’t logged anything this day.')+'</div>';
   return '<div class="nav"><button class="ib" data-act="prev" aria-label="Previous day">‹</button><b>'+dayLabel(S.day)+'</b><button class="ib" data-act="next" '+(S.day>=TODAY?'disabled':'')+' aria-label="Next day">›</button></div>'
    +'<div class="card hero"><div class="ring"><svg width="124" height="124" viewBox="0 0 124 124"><circle cx="62" cy="62" r="'+R+'" fill="none" stroke="var(--line)" stroke-width="13"/><circle cx="62" cy="62" r="'+R+'" fill="none" stroke="'+(over?'var(--bad)':'var(--acc)')+'" stroke-width="13" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+C*(1-Math.min(1,t.k/g.k))+'"/></svg><div class="c"><b>'+fmt(t.k)+'</b><span>'+(over?fmt(t.k-g.k)+' over':fmt(g.k-t.k)+' left')+'</span></div></div><div class="macros">'+mac('Protein',t.p,g.p,'var(--p)')+mac('Carbs',t.c,g.c,'var(--c)')+mac('Fat',t.f,g.f,'var(--f)')+'</div></div>'
-   +'<div class="card"><p class="sub">Meals</p>'+list+'</div>';
+   +'<div class="card"><p class="sub">Meals'+(own&&ms.length?' <span style="font-weight:400">· tap a meal to edit</span>':'')+'</p>'+list+'</div>';
 }
 
 /* ---------- insights ---------- */
@@ -184,6 +187,7 @@ function sheet(){
   const L=$('#layer');if(!SH){L.innerHTML='';return}
   const a=SH.ai,rec=SH.manual&&!SH.loading?Object.values(S.meals.filter(m=>m.who===me()).sort((x,y)=>y.ts-x.ts).reduce((o,m)=>{const k=m.name.toLowerCase();if(!o[k])o[k]=m;return o},{})).slice(0,6):[];
   L.innerHTML='<div class="scrim" data-act="scrim"><div class="sheet"><div class="grab"></div>'
+  +(SH.editId?'<h2 style="margin:0 0 10px">Edit meal</h2>':'')
   +(SH.manual?'<label>Describe what you ate</label><div class="row"><input id="f-txt" placeholder="e.g. 2 roti canai with dhal and teh tarik"><button class="sec" style="flex:none;padding:0 14px;border-radius:12px;border:0;font:inherit;font-weight:700;color:var(--acc)" data-act="estimate">Estimate</button></div>'+(rec.length?'<label style="margin-top:12px">Recent meals</label><div class="chips">'+rec.map((m,i)=>'<button data-act="recent" data-i="'+i+'">'+esc(m.name)+'</button>').join('')+'</div>':''):'')
   +'<div class="row" style="margin:12px 0">'+(SH.thumb?'<img alt="" style="width:84px;height:84px;border-radius:18px;object-fit:cover" src="'+esc(SH.thumb)+'">':'')+'<div style="flex:1"><label>Meal name</label><input id="f-name" value="'+esc(SH.name||'')+'" placeholder="e.g. Nasi lemak"><div style="height:8px"></div><label>Type</label><select id="f-type">'+['Breakfast','Lunch','Dinner','Snack'].map(x=>'<option'+(x===SH.type?' selected':'')+'>'+x+'</option>').join('')+'</select></div></div>'
   +(SH.loading?'<div class="ai">✨ Analysing…</div>':SH.err?'<div class="ai w">'+esc(SH.err)+'</div>':a?'<div class="ai">✨ AI estimate · '+esc(a.confidence||'medium')+' confidence'+(a.note?' – '+esc(a.note):'')+'</div>':'')
@@ -206,8 +210,8 @@ async function shrink(file,max){
 async function onFile(f){
   if(!f)return;SH={thumb:'',name:'',type:mtype(),v:{},base:null,mult:1,ai:null,loading:true,err:''};sheet();
   try{
-    const big=await shrink(f,1024),sm=await shrink(f,180);SH.thumb=sm.toDataURL('image/jpeg',.6);sheet();
-    const j=await api('ai',{image:big.toDataURL('image/jpeg',.82).split(',')[1]});
+    const big=await shrink(f,800),sm=await shrink(f,180);SH.thumb=sm.toDataURL('image/jpeg',.6);sheet();
+    const j=await api('ai',{image:big.toDataURL('image/jpeg',.78).split(',')[1]});
     if(!SH)return;if(j.result.error)throw new Error(j.result.error);applyAI(j.result);
   }catch(e){if(!SH)return;fail(e)}
   sheet();
@@ -219,13 +223,19 @@ async function estimate(){
 }
 async function save(){
   const v=k=>Math.max(0,Math.round(+$('#f-'+k).value||0));
+  if(SH.editId){
+    const upd={type:$('#f-type').value,name:$('#f-name').value.trim()||'Meal',kcal:v('kcal'),p:v('p'),c:v('c'),f:v('f')};
+    try{await api('upd',{id:SH.editId,who:me(),meal:upd});Object.assign(S.meals.find(x=>x.id===SH.editId),upd);SH=null;sheet();render();toast('Meal updated ✓')}
+    catch(e){toast('Couldn’t update: '+e.message)}
+    return;
+  }
   const meal={who:me(),day:S.day,ts:S.day===TODAY?Date.now():pd(S.day).getTime()+12*36e5,type:$('#f-type').value,name:$('#f-name').value.trim()||'Meal',kcal:v('kcal'),p:v('p'),c:v('c'),f:v('f'),thumb:SH.thumb||''};
   try{const j=await api('add',{meal});meal.id=j.id;S.meals.push(meal);SH=null;S.view=me();S.tab='today';sheet();render();toast('Meal saved ✓')}
   catch(e){toast('Couldn’t save: '+e.message)}
 }
 function goalsSheet(){
   const g=goals(me());
-  $('#layer').innerHTML='<div class="scrim" data-act="scrim"><div class="sheet"><div class="grab"></div><h2>Your daily goals</h2><div class="g2"><div><label>Calories</label><input type="number" inputmode="numeric" id="g-k" value="'+g.k+'"></div><div><label>Protein (g)</label><input type="number" inputmode="numeric" id="g-p" value="'+g.p+'"></div></div><p class="note">Signed in as '+esc(me())+'. Carbs and fat targets are set at 50% and 30% of calories.</p><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="invite">🔗 Share setup link with partner</button></div><div class="btns"><button class="sec" data-act="reset">Sign out</button><button class="pri" data-act="savegoals">Save goals</button></div></div></div>';
+  $('#layer').innerHTML='<div class="scrim" data-act="scrim"><div class="sheet"><div class="grab"></div><h2>Your daily goals</h2><div class="g2"><div><label>Calories</label><input type="number" inputmode="numeric" id="g-k" value="'+g.k+'"></div><div><label>Protein (g)</label><input type="number" inputmode="numeric" id="g-p" value="'+g.p+'"></div></div><label>Email me when my partner logs a meal (optional)</label><input type="email" id="g-e" value="'+esc((S.people[me()]||{}).email||'')+'" placeholder="you@gmail.com"><p class="note">Signed in as '+esc(me())+'. Carbs and fat targets are set at 50% and 30% of calories.</p><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="invite">🔗 Share setup link with partner</button></div><div class="btns"><button class="sec" data-act="reset">Sign out</button><button class="pri" data-act="savegoals">Save goals</button></div></div></div>';
 }
 
 /* ---------- events ---------- */
@@ -238,7 +248,7 @@ document.addEventListener('click',async e=>{
     cfg={url,key,me:who};try{await api('ping');ls('plate',JSON.stringify(cfg));keepLink();S.ready=false;render();load()}catch(x){cfg=null;toast(x.message==='Failed to fetch'?'Can’t reach that URL':x.message)}return;
   }
   if(a==='retry'){S.err='';render();load()}
-  else if(a==='reset'){if(confirm('Sign out of this device?')){ls('plate','');cfg=null;S.ready=false;SH=null;$('#layer').innerHTML='';render()}}
+  else if(a==='reset'){if(confirm('Sign out of this device?')){ls('plate','');ls('plate-cache','');cfg=null;S.ready=false;SH=null;$('#layer').innerHTML='';render()}}
   else if(a==='tab'){S.tab=el.dataset.t;render()}
   else if(a==='view'){S.view=el.dataset.id;render()}
   else if(a==='prev'){S.day=addD(S.day,-1);render()}
@@ -249,6 +259,7 @@ document.addEventListener('click',async e=>{
   else if(a==='snap'){S.view=me();$('#file').value='';$('#file').click()}
   else if(a==='manual'){SH={manual:1,thumb:'',name:'',type:mtype(),v:{},base:null,mult:1,ai:null,loading:false,err:''};sheet()}
   else if(a==='recent'){const m=Object.values(S.meals.filter(x=>x.who===me()).sort((x,y)=>y.ts-x.ts).reduce((o,x)=>{const k=x.name.toLowerCase();if(!o[k])o[k]=x;return o},{})).slice(0,6)[+el.dataset.i];SH.name=m.name;SH.type=m.type;SH.v={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH.base=null;SH.ai=null;sheet()}
+  else if(a==='edit'){const m=S.meals.find(x=>x.id===el.dataset.id);if(!m)return;const b={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH={editId:m.id,thumb:m.thumb||'',name:m.name,type:m.type,v:Object.assign({},b),base:b,mult:1,ai:null,loading:false,err:''};sheet()}
   else if(a==='estimate')estimate();
   else if(a==='cancel'){SH=null;sheet()}
   else if(a==='mult'){SH.mult=+el.dataset.m;setVals(SH.mult);document.querySelectorAll('.chips button[data-m]').forEach(b=>b.classList.toggle('on',+b.dataset.m===SH.mult))}
@@ -258,7 +269,8 @@ document.addEventListener('click',async e=>{
     if(navigator.share)navigator.share({title:'Plate',text:'Open this link to join our Plate tracker, then enter your name:',url:link}).catch(()=>{});
     else if(navigator.clipboard)navigator.clipboard.writeText(link).then(()=>toast('Link copied'))}
   else if(a==='savegoals'){
-    const g={who:me(),goalKcal:Math.max(800,Math.round(+$('#g-k').value||2000)),goalP:Math.max(20,Math.round(+$('#g-p').value||100))};
+    const g={who:me(),goalKcal:Math.max(800,Math.round(+$('#g-k').value||2000)),goalP:Math.max(20,Math.round(+$('#g-p').value||100)),email:$('#g-e').value.trim()};
+    if(g.email&&g.email.indexOf('@')<1)return toast('That email doesn’t look right');
     try{await api('goals',g);S.people[me()]=g;$('#layer').innerHTML='';render();toast('Goals updated')}catch(x){toast('Couldn’t save goals')}
   }
   else if(a==='del'){if(confirm('Delete this meal?'))try{await api('del',{id:el.dataset.id,who:me()});S.meals=S.meals.filter(m=>m.id!==el.dataset.id);render()}catch(x){toast('Couldn’t delete')}}
