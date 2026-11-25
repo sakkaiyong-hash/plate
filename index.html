@@ -52,12 +52,15 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 4px;b
 .spin{display:inline-block;width:16px;height:16px;border:2.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-3px;margin-right:8px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .sk{background:var(--line);border-radius:20px;animation:pu 1.2s ease-in-out infinite}@keyframes pu{50%{opacity:.45}}
-#bar{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;height:3px;z-index:40;overflow:hidden;opacity:0;transition:opacity .2s;pointer-events:none}
+#bar{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;height:5px;z-index:40;overflow:hidden;opacity:0;transition:opacity .2s;pointer-events:none}
 #bar.on{opacity:1}#bar i{display:block;height:100%;width:40%;background:var(--acc);animation:ba 1s ease-in-out infinite}@keyframes ba{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+#sync{position:fixed;top:calc(env(safe-area-inset-top,0px) + 12px);left:50%;z-index:41;background:var(--acc);color:#fff;padding:9px 16px;border-radius:22px;font-size:14px;font-weight:700;box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:0;transform:translate(-50%,-14px);transition:opacity .25s,transform .25s;pointer-events:none;white-space:nowrap}
+#sync.on{opacity:1;transform:translate(-50%,0)}#sync .spin{border-width:2.5px}
+@media(prefers-color-scheme:dark){#sync{color:#04211c}}
 .fade{animation:fi .18s ease-out}@keyframes fi{from{opacity:.35}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head>
-<body><div id="bar"><i></i></div><div id="app"></div><div id="layer"></div><input type="file" id="file" accept="image/*" hidden>
+<body><div id="bar"><i></i></div><div id="sync"></div><div id="app"></div><div id="layer"></div><input type="file" id="file" accept="image/*" hidden>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -82,8 +85,12 @@ async function api(action,data){
   const r=await fetch(cfg.url,{method:'POST',body:JSON.stringify(Object.assign({key:cfg.key,action},data||{}))});
   const j=await r.json();if(!j.ok)throw new Error(j.error||'Request failed');return j;
 }
-async function load(){
-  $('#bar').classList.add('on');
+function busy(on){
+  $('#bar').classList.toggle('on',on);const p=$('#sync');p.classList.toggle('on',on);
+  if(on)p.innerHTML='<span class="spin"></span>'+(S.ready?'Updating…':'Loading…');
+}
+async function load(silent){
+  const t0=Date.now();if(!silent)busy(true);
   try{
     const j=await api('list',{who:me(),since:addD(TODAY,-400),thumbSince:addD(TODAY,-14)});
     if(S.seen)j.meals.filter(m=>!S.seen.has(m.id)&&m.who!==me()&&m.ts>Date.now()-864e5).forEach(m=>toast(m.who+' logged '+m.type+': '+m.name+' ('+fmt(m.kcal)+' kcal)'));
@@ -92,7 +99,7 @@ async function load(){
     if(!S.people[me()]){await api('goals',{who:me(),goalKcal:2000,goalP:100,init:true});S.people[me()]={who:me(),goalKcal:2000,goalP:100}}
     if(!S.view)S.view=me();S.ready=true;S.err='';ls('plate-cache',JSON.stringify({meals:S.meals,people:S.people}));
   }catch(e){if(S.ready&&!S.warned){S.warned=1;toast('Couldn’t refresh – showing saved data')}if(!S.ready)S.err=e.message==='Failed to fetch'?'Can’t reach the backend. Check the web app URL and your internet connection.':e.message}
-  $('#bar').classList.remove('on');
+  if(!silent)setTimeout(()=>busy(false),Math.max(0,1000-(Date.now()-t0)));
   if(!SH&&!$('#layer').innerHTML)render();
 }
 const tot=(w,d)=>S.meals.filter(m=>m.who===w&&m.day===d).reduce((t,m)=>({k:t.k+m.kcal,p:t.p+m.p,c:t.c+m.c,f:t.f+m.f}),{k:0,p:0,c:0,f:0});
@@ -324,6 +331,6 @@ document.addEventListener('change',e=>{
 });
 $('#file').addEventListener('change',e=>onFile(e.target.files[0]));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cfg)load()});
-setInterval(()=>{if(cfg&&!document.hidden)load()},60000);
+setInterval(()=>{if(cfg&&!document.hidden)load(true)},60000);
 render();if(cfg)load();
 </script></body></html>
