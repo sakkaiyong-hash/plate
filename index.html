@@ -49,8 +49,15 @@ label{font-size:12px;color:var(--mute);display:block;margin:0 0 4px}
 table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 4px;border-top:1px solid var(--line);text-align:right}th{font-weight:600;color:var(--mute);border-top:0}td:first-child,th:first-child{text-align:left;color:var(--mute)}
 .big{font-size:34px;font-weight:800;letter-spacing:-1px}.lg{display:flex;gap:14px;font-size:13px;color:var(--mute);margin-top:6px}.lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
 .rw{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:14px}.rw span:first-child{width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rw .bar{flex:1}.rw span:last-child{width:70px;text-align:right;color:var(--mute)}
+.spin{display:inline-block;width:16px;height:16px;border:2.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-3px;margin-right:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.sk{background:var(--line);border-radius:20px;animation:pu 1.2s ease-in-out infinite}@keyframes pu{50%{opacity:.45}}
+#bar{position:fixed;top:env(safe-area-inset-top,0px);left:0;right:0;height:3px;z-index:40;overflow:hidden;opacity:0;transition:opacity .2s;pointer-events:none}
+#bar.on{opacity:1}#bar i{display:block;height:100%;width:40%;background:var(--acc);animation:ba 1s ease-in-out infinite}@keyframes ba{from{transform:translateX(-100%)}to{transform:translateX(250%)}}
+.fade{animation:fi .18s ease-out}@keyframes fi{from{opacity:.35}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style></head>
-<body><div id="app"></div><div id="layer"></div><input type="file" id="file" accept="image/*" hidden>
+<body><div id="bar"><i></i></div><div id="app"></div><div id="layer"></div><input type="file" id="file" accept="image/*" hidden>
 <script>
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -76,6 +83,7 @@ async function api(action,data){
   const j=await r.json();if(!j.ok)throw new Error(j.error||'Request failed');return j;
 }
 async function load(){
+  $('#bar').classList.add('on');
   try{
     const j=await api('list',{who:me(),since:addD(TODAY,-400),thumbSince:addD(TODAY,-14)});
     if(S.seen)j.meals.filter(m=>!S.seen.has(m.id)&&m.who!==me()&&m.ts>Date.now()-864e5).forEach(m=>toast(m.who+' logged '+m.type+': '+m.name+' ('+fmt(m.kcal)+' kcal)'));
@@ -84,17 +92,19 @@ async function load(){
     if(!S.people[me()]){await api('goals',{who:me(),goalKcal:2000,goalP:100,init:true});S.people[me()]={who:me(),goalKcal:2000,goalP:100}}
     if(!S.view)S.view=me();S.ready=true;S.err='';ls('plate-cache',JSON.stringify({meals:S.meals,people:S.people}));
   }catch(e){if(S.ready&&!S.warned){S.warned=1;toast('Couldn’t refresh – showing saved data')}if(!S.ready)S.err=e.message==='Failed to fetch'?'Can’t reach the backend. Check the web app URL and your internet connection.':e.message}
+  $('#bar').classList.remove('on');
   if(!SH&&!$('#layer').innerHTML)render();
 }
 const tot=(w,d)=>S.meals.filter(m=>m.who===w&&m.day===d).reduce((t,m)=>({k:t.k+m.kcal,p:t.p+m.p,c:t.c+m.c,f:t.f+m.f}),{k:0,p:0,c:0,f:0});
 const dayLabel=d=>d===TODAY?'Today':d===addD(TODAY,-1)?'Yesterday':pd(d).toLocaleDateString([], {weekday:'short',day:'numeric',month:'short'});
 
 /* ---------- screens ---------- */
-function render(){
+function render(f){render0();if(f){const a=$('#app');a.classList.remove('fade');void a.offsetWidth;a.classList.add('fade')}}
+function render0(){
   const a=$('#app');
   if(!cfg){a.innerHTML='<h1>Welcome to Plate</h1><p class="note">'+(pre.key?'Almost there – just enter your name.':'Connect once, then you stay signed in.')+'</p><div class="card">'+(DEFAULT_URL?'':'<label>Web app URL</label><input id="s-url" value="'+esc(pre.url)+'" placeholder="https://script.google.com/macros/s/…/exec"><div style="height:10px"></div>')+'<label>Shared passcode</label><input id="s-key" type="password" value="'+esc(pre.key)+'"><div style="height:10px"></div><label>Your name</label><input id="s-me" value="'+esc(pre.me)+'" placeholder="e.g. See"><div class="btns"><button class="pri" data-act="connect">Connect</button></div></div>';return}
   if(S.err){a.innerHTML='<h1>Plate</h1><div class="card empty"><big>🔌</big>'+esc(S.err)+'<div class="btns"><button class="sec" data-act="retry">Try again</button><button class="sec" data-act="reset">Change settings</button></div></div>';return}
-  if(!S.ready){a.innerHTML='<h1>Plate</h1><div class="empty">Loading…</div>';return}
+  if(!S.ready){a.innerHTML='<h1>Plate</h1><div class="sk" style="height:44px;margin:12px 0"></div><div class="sk" style="height:48px;margin-bottom:12px"></div><div class="sk" style="height:190px;margin-bottom:12px"></div><div class="sk" style="height:230px"></div>';return}
   const seg=ids().map(w=>'<button class="'+(w===S.view?'on':'')+'" data-act="view" data-id="'+esc(w)+'">'+esc(w===me()?'You':w)+(S.tab==='today'?'<small>'+fmt(tot(w,S.day).k)+' kcal</small>':'')+'</button>').join('');
   a.innerHTML='<div class="top"><div><h1>Plate</h1>'+(streak(me())>1?'<div class="note">🔥 '+streak(me())+'-day streak</div>':'')+'</div><button class="ib" data-act="goals" aria-label="Goals and settings">⚙️</button></div>'
    +'<div class="tabs"><button class="'+(S.tab==='today'?'on':'')+'" data-act="tab" data-t="today">Today</button><button class="'+(S.tab==='insights'?'on':'')+'" data-act="tab" data-t="insights">Insights</button></div>'
@@ -194,7 +204,7 @@ function sumCard(w,f,t,label){
   if(!stats(w,f,t).n)return'';
   const x=S.sums[sumKey(w,f,t)],btn=(txt)=>'<button class="sec" style="width:100%;height:46px;border-radius:23px;border:0;font:inherit;font-weight:700;color:var(--acc);background:var(--accs);cursor:pointer" data-act="sum" data-w="'+esc(w)+'" data-f="'+f+'" data-t="'+t+'" data-l="'+esc(label)+'">'+txt+'</button>';
   let b;
-  if(x&&x.loading)b='<div class="ai">✨ Writing your summary…</div>';
+  if(x&&x.loading)b='<div class="ai"><span class="spin"></span>Writing your summary…</div>';
   else if(x&&x.err)b='<div class="ai w">'+esc(x.err)+'</div>'+btn('Try again');
   else if(x&&x.summary)b='<p style="margin:0 0 10px">'+esc(x.summary)+'</p><ul style="margin:0 0 10px;padding-left:20px">'+(x.tips||[]).map(i=>'<li style="margin-bottom:6px">'+esc(i)+'</li>').join('')+'</ul><p class="note" style="margin:0">General tips from AI, not medical advice.</p>';
   else b=btn('✨ Summary & advice');
@@ -211,7 +221,7 @@ function sheet(){
   +(SH.editId?'<h2 style="margin:0 0 10px">Edit meal</h2>':'')
   +(SH.manual?'<label>Describe what you ate</label><div class="row"><input id="f-txt" placeholder="e.g. 2 roti canai with dhal and teh tarik"><button class="sec" style="flex:none;padding:0 14px;border-radius:12px;border:0;font:inherit;font-weight:700;color:var(--acc)" data-act="estimate">Estimate</button></div>'+(rec.length?'<label style="margin-top:12px">Recent meals</label><div class="chips">'+rec.map((m,i)=>'<button data-act="recent" data-i="'+i+'">'+esc(m.name)+'</button>').join('')+'</div>':''):'')
   +'<div class="row" style="margin:12px 0">'+(SH.thumb?'<img alt="" style="width:84px;height:84px;border-radius:18px;object-fit:cover" src="'+esc(SH.thumb)+'">':'')+'<div style="flex:1"><label>Meal name</label><input id="f-name" value="'+esc(SH.name||'')+'" placeholder="e.g. Nasi lemak"><div style="height:8px"></div><label>Type</label><select id="f-type">'+['Breakfast','Lunch','Dinner','Snack'].map(x=>'<option'+(x===SH.type?' selected':'')+'>'+x+'</option>').join('')+'</select></div></div>'
-  +(SH.loading?'<div class="ai">✨ Analysing…</div>':SH.err?'<div class="ai w">'+esc(SH.err)+'</div>':a?'<div class="ai">✨ AI estimate · '+esc(a.confidence||'medium')+' confidence'+(a.note?' – '+esc(a.note):'')+'</div>':'')
+  +(SH.loading?'<div class="ai"><span class="spin"></span>'+esc(SH.step||'Working…')+'</div>':SH.err?'<div class="ai w">'+esc(SH.err)+'</div>':a?'<div class="ai">✨ AI estimate · '+esc(a.confidence||'medium')+' confidence'+(a.note?' – '+esc(a.note):'')+'</div>':'')
   +(a&&a.items&&a.items.length?'<p class="note" style="margin:0 0 6px">'+a.items.map(i=>esc(i.food)+(i.portion?' ('+esc(i.portion)+')':'')+' '+fmt(i.kcal)).join(' · ')+'</p>':'')
   +(SH.base?'<label>Portion size</label><div class="chips">'+[.5,1,1.5,2].map(m=>'<button data-act="mult" data-m="'+m+'" class="'+(SH.mult===m?'on':'')+'">'+({.5:'½×',1:'1×',1.5:'1½×',2:'2×'}[m])+'</button>').join('')+'</div>':'')
   +'<div class="g2">'+[['kcal','Calories'],['p','Protein (g)'],['c','Carbs (g)'],['f','Fat (g)']].map(([k,l])=>'<div><label>'+l+'</label><input type="number" inputmode="decimal" min="0" id="f-'+k+'" value="'+(SH.v[k]==null?'':SH.v[k])+'"></div>').join('')+'</div>'
@@ -232,30 +242,32 @@ function draw(img,max){
   c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);c.getContext('2d').drawImage(img,0,0,c.width,c.height);return c;
 }
 async function onFile(f){
-  if(!f)return;SH={thumb:'',name:'',type:mtype(),v:{},base:null,mult:1,ai:null,loading:true,err:''};sheet();
+  if(!f)return;SH={thumb:'',name:'',type:mtype(),v:{},base:null,mult:1,ai:null,loading:true,err:'',step:'Preparing photo…'};sheet();
   try{
-    const img=await decode(f),big=draw(img,720),sm=draw(img,160);SH.thumb=sm.toDataURL('image/jpeg',.6);sheet();
+    await new Promise(r=>setTimeout(r,40));
+    const img=await decode(f),big=draw(img,720),sm=draw(img,160);SH.thumb=sm.toDataURL('image/jpeg',.6);SH.step='Analysing your plate… usually a few seconds';sheet();await new Promise(r=>setTimeout(r,20));
     const j=await api('ai',{image:big.toDataURL('image/jpeg',.72).split(',')[1]});
     if(!SH)return;if(j.result.error)throw new Error(j.result.error);applyAI(j.result);
   }catch(e){if(!SH)return;fail(e)}
   sheet();
 }
 async function estimate(){
-  const txt=$('#f-txt').value.trim();if(!txt)return;SH.name=$('#f-name').value;SH.loading=true;sheet();
+  const txt=$('#f-txt').value.trim();if(!txt)return;SH.name=$('#f-name').value;SH.loading=true;SH.step='Estimating nutrition…';sheet();
   try{const j=await api('ai',{text:txt});if(!SH)return;if(j.result.error)throw new Error(j.result.error);applyAI(j.result)}catch(e){if(!SH)return;fail(e)}
   sheet();
 }
 async function save(){
   const v=k=>Math.max(0,Math.round(+$('#f-'+k).value||0));
+  const sb=$('[data-act=save]');sb.disabled=true;sb.innerHTML='<span class="spin"></span>Saving…';const undo=()=>{sb.disabled=false;sb.textContent='Save meal'};
   if(SH.editId){
     const upd={type:$('#f-type').value,name:$('#f-name').value.trim()||'Meal',kcal:v('kcal'),p:v('p'),c:v('c'),f:v('f')};
     try{await api('upd',{id:SH.editId,who:me(),meal:upd});Object.assign(S.meals.find(x=>x.id===SH.editId),upd);SH=null;sheet();render();toast('Meal updated ✓')}
-    catch(e){toast('Couldn’t update: '+e.message)}
+    catch(e){undo();toast('Couldn’t update: '+e.message)}
     return;
   }
   const meal={who:me(),day:S.day,ts:S.day===TODAY?Date.now():pd(S.day).getTime()+12*36e5,type:$('#f-type').value,name:$('#f-name').value.trim()||'Meal',kcal:v('kcal'),p:v('p'),c:v('c'),f:v('f'),thumb:SH.thumb||''};
   try{const j=await api('add',{meal});meal.id=j.id;S.meals.push(meal);SH=null;S.view=me();S.tab='today';sheet();render();toast('Meal saved ✓')}
-  catch(e){toast('Couldn’t save: '+e.message)}
+  catch(e){undo();toast('Couldn’t save: '+e.message)}
 }
 function goalsSheet(){
   const g=goals(me());
@@ -269,22 +281,22 @@ document.addEventListener('click',async e=>{
   if(a==='connect'){
     const url=DEFAULT_URL||$('#s-url').value.trim(),key=$('#s-key').value,who=$('#s-me').value.trim();
     if(!/^https:\/\//.test(url)||!key||!who)return toast('Fill in all three fields');
-    cfg={url,key,me:who};try{await api('ping');ls('plate',JSON.stringify(cfg));keepLink();S.ready=false;render();load()}catch(x){cfg=null;toast(x.message==='Failed to fetch'?'Can’t reach that URL':x.message)}return;
+    el.disabled=true;el.innerHTML='<span class="spin"></span>Connecting…';cfg={url,key,me:who};try{await api('ping');ls('plate',JSON.stringify(cfg));keepLink();S.ready=false;render();load()}catch(x){el.disabled=false;el.textContent='Connect';cfg=null;toast(x.message==='Failed to fetch'?'Can’t reach that URL':x.message)}return;
   }
   if(a==='retry'){S.err='';render();load()}
   else if(a==='reset'){if(confirm('Sign out of this device?')){ls('plate','');ls('plate-cache','');cfg=null;S.ready=false;SH=null;$('#layer').innerHTML='';render()}}
-  else if(a==='tab'){S.tab=el.dataset.t;render()}
-  else if(a==='view'){S.view=el.dataset.id;render()}
-  else if(a==='prev'){S.day=addD(S.day,-1);render()}
-  else if(a==='next'&&S.day<TODAY){S.day=addD(S.day,1);render()}
-  else if(a==='mode'){S.mode=el.dataset.m;S.anchor=S.mode==='custom'?S.anchor:TODAY;render()}
-  else if(a==='sh'){shift(+el.dataset.n);render()}
+  else if(a==='tab'){S.tab=el.dataset.t;render(1)}
+  else if(a==='view'){S.view=el.dataset.id;render(1)}
+  else if(a==='prev'){S.day=addD(S.day,-1);render(1)}
+  else if(a==='next'&&S.day<TODAY){S.day=addD(S.day,1);render(1)}
+  else if(a==='mode'){S.mode=el.dataset.m;S.anchor=S.mode==='custom'?S.anchor:TODAY;render(1)}
+  else if(a==='sh'){shift(+el.dataset.n);render(1)}
   else if(a==='csv')csv();
   else if(a==='snap'){S.view=me();$('#file').value='';$('#file').click()}
   else if(a==='manual'){SH={manual:1,thumb:'',name:'',type:mtype(),v:{},base:null,mult:1,ai:null,loading:false,err:''};sheet()}
   else if(a==='recent'){const m=Object.values(S.meals.filter(x=>x.who===me()).sort((x,y)=>y.ts-x.ts).reduce((o,x)=>{const k=x.name.toLowerCase();if(!o[k])o[k]=x;return o},{})).slice(0,6)[+el.dataset.i];SH.name=m.name;SH.type=m.type;SH.v={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH.base=null;SH.ai=null;sheet()}
   else if(a==='edit'){const m=S.meals.find(x=>x.id===el.dataset.id);if(!m)return;const b={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH={editId:m.id,thumb:m.thumb||'',name:m.name,type:m.type,v:Object.assign({},b),base:b,mult:1,ai:null,loading:false,err:''};sheet()}
-  else if(a==='metric'){S.metric=el.dataset.m;render()}
+  else if(a==='metric'){S.metric=el.dataset.m;render(1)}
   else if(a==='sum'){
     const{w,f,t,l}=el.dataset,k=sumKey(w,f,t);S.sums[k]={loading:1};render();
     try{const j=await api('sum',{label:l,stats:sumPayload(w,f,t,l)});S.sums[k]=j.result;
@@ -305,7 +317,7 @@ document.addEventListener('click',async e=>{
     if(g.email&&g.email.indexOf('@')<1)return toast('That email doesn’t look right');
     try{await api('goals',g);S.people[me()]=g;$('#layer').innerHTML='';render();toast('Goals updated')}catch(x){toast('Couldn’t save goals')}
   }
-  else if(a==='del'){if(confirm('Delete this meal?'))try{await api('del',{id:el.dataset.id,who:me()});S.meals=S.meals.filter(m=>m.id!==el.dataset.id);render()}catch(x){toast('Couldn’t delete')}}
+  else if(a==='del'){if(confirm('Delete this meal?'))try{el.closest('.meal').style.opacity=.4;await api('del',{id:el.dataset.id,who:me()});S.meals=S.meals.filter(m=>m.id!==el.dataset.id);render()}catch(x){el.closest('.meal').style.opacity=1;toast('Couldn’t delete')}}
 });
 document.addEventListener('change',e=>{
   if(e.target.id==='c-f'||e.target.id==='c-t'){const f=$('#c-f').value,t=$('#c-t').value;if(f&&t&&f<=t){S.from=f;S.to=t;render()}}
