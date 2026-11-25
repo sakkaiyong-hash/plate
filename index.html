@@ -49,6 +49,7 @@ label{font-size:12px;color:var(--mute);display:block;margin:0 0 4px}
 table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 4px;border-top:1px solid var(--line);text-align:right}th{font-weight:600;color:var(--mute);border-top:0}td:first-child,th:first-child{text-align:left;color:var(--mute)}
 .big{font-size:34px;font-weight:800;letter-spacing:-1px}.lg{display:flex;gap:14px;font-size:13px;color:var(--mute);margin-top:6px}.lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
 .rw{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:14px}.rw span:first-child{width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rw .bar{flex:1}.rw span:last-child{width:70px;text-align:right;color:var(--mute)}
+.sheet input[type=checkbox],input[type=checkbox]{width:22px;height:22px;padding:0;flex:none;margin:0}
 .spin{display:inline-block;width:16px;height:16px;border:2.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-3px;margin-right:8px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .sk{background:var(--line);border-radius:20px;animation:pu 1.2s ease-in-out infinite}@keyframes pu{50%{opacity:.45}}
@@ -80,7 +81,7 @@ try{S.sums=JSON.parse(ls('plate-sum')||'{}')}catch(e){}
 try{const c=cfg&&JSON.parse(ls('plate-cache')||'null');if(c&&c.meals){S.meals=c.meals;S.people=c.people||{};S.view=me();S.ready=true;S.seen=new Set(c.meals.map(m=>m.id))}}catch(e){}
 const goals=w=>{const g=S.people[w]||{},k=g.goalKcal||2000;return{k,p:g.goalP||100,c:k*.5/4,f:k*.3/9}};
 const ids=()=>{const a=Object.keys(S.people).filter(x=>x!==me());return[me()].concat(a).slice(0,2)};
-const toast=t=>{const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),3200)};
+const toast=t=>{if(/^Couldn’t|^Can’t/.test(t))fb('err');else if(/✓/.test(t))fb('ok');else if(/ logged /.test(t))fb('note');const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),3200)};
 async function api(action,data){
   const r=await fetch(cfg.url,{method:'POST',body:JSON.stringify(Object.assign({key:cfg.key,action},data||{}))});
   const j=await r.json();if(!j.ok)throw new Error(j.error||'Request failed');return j;
@@ -123,7 +124,7 @@ function today(){
   const v=S.view,g=goals(v),t=tot(v,S.day),own=v===me(),R=52,C=2*Math.PI*R,mk=S.metric,val=t[mk],gl=g[mk],unit=mk==='k'?'kcal':'g',col={k:'var(--acc)',p:'var(--p)',c:'var(--c)',f:'var(--f)'}[mk],over=val>gl;
   const mac=(l,x,y,c)=>'<div class="m"><div class="l"><span>'+l+'</span><b>'+fmt(x)+' / '+fmt(y)+' g</b></div><div class="bar"><i style="width:'+Math.min(100,x/y*100)+'%;background:'+c+'"></i></div></div>';
   const ms=S.meals.filter(m=>m.who===v&&m.day===S.day).sort((a,b)=>a.ts-b.ts);
-  const list=ms.length?ms.map(m=>'<div class="meal">'+(m.thumb?'<img alt="" src="'+esc(m.thumb)+'">':'<div class="ph">🍽️</div>')+'<div class="t"'+(own?' data-act="edit" data-id="'+esc(m.id)+'" style="cursor:pointer"':'')+'><b>'+esc(m.name)+'</b><small>'+esc(m.type)+' · '+new Date(m.ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small><br><small>P '+fmt(m.p)+' · C '+fmt(m.c)+' · F '+fmt(m.f)+' g</small></div><div class="k">'+fmt(m.kcal)+'<small>kcal</small></div>'+(own?'<button class="x" aria-label="Delete" data-act="del" data-id="'+esc(m.id)+'">✕</button>':'')+'</div>').join(''):'<div class="empty"><big>'+(own?'📸':'🍽️')+'</big>'+(own?'Nothing logged yet. Snap your first meal.':esc(v)+' hasn’t logged anything this day.')+'</div>';
+  const list=ms.length?ms.map(m=>'<div class="meal">'+(m.thumb?'<img alt="" src="'+esc(m.thumb)+'">':'<div class="ph">🍽️</div>')+'<div class="t"'+(own?' data-act="edit" data-id="'+esc(m.id)+'" style="cursor:pointer"':'')+'><b>'+esc(m.name)+'</b><small>'+esc(m.type)+' · '+new Date(m.ts).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'</small><br><small>P '+fmt(m.p)+' · C '+fmt(m.c)+' · F '+fmt(m.f)+' g</small></div><div class="k">'+fmt(m.kcal)+'<small>kcal</small></div>'+(own?'<button class="x" aria-label="Edit meal" data-act="edit" data-id="'+esc(m.id)+'">✏️</button><button class="x" aria-label="Delete meal" data-act="del" data-id="'+esc(m.id)+'">🗑️</button>':'')+'</div>').join(''):'<div class="empty"><big>'+(own?'📸':'🍽️')+'</big>'+(own?'Nothing logged yet. Snap your first meal.':esc(v)+' hasn’t logged anything this day.')+'</div>';
   return '<div class="nav"><button class="ib" data-act="prev" aria-label="Previous day">‹</button><b>'+dayLabel(S.day)+'</b><button class="ib" data-act="next" '+(S.day>=TODAY?'disabled':'')+' aria-label="Next day">›</button></div>'
    +'<div class="card"><div class="chips" style="margin:0 0 12px">'+[['k','Calories'],['p','Protein'],['c','Carbs'],['f','Fat']].map(x=>'<button data-act="metric" data-m="'+x[0]+'" class="'+(S.metric===x[0]?'on':'')+'">'+x[1]+'</button>').join('')+'</div><div class="hero"><div class="ring"><svg width="124" height="124" viewBox="0 0 124 124"><circle cx="62" cy="62" r="'+R+'" fill="none" stroke="var(--line)" stroke-width="13"/><circle cx="62" cy="62" r="'+R+'" fill="none" stroke="'+(over?'var(--bad)':col)+'" stroke-width="13" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+C*(1-Math.min(1,val/gl))+'"/></svg><div class="c"><b>'+fmt(val)+'</b><span>'+(over?fmt(val-gl)+' '+unit+' over':fmt(gl-val)+' '+unit+' left')+'</span></div></div><div class="macros">'+mac('Protein',t.p,g.p,'var(--p)')+mac('Carbs',t.c,g.c,'var(--c)')+mac('Fat',t.f,g.f,'var(--f)')+'</div></div></div>'
    +'<div class="card"><p class="sub">Meals'+(own&&ms.length?' <span style="font-weight:400">· tap a meal to edit</span>':'')+'</p>'+list+'</div>'+sumCard(v,S.day,S.day,dayLabel(S.day));
@@ -230,14 +231,14 @@ function sheet(){
   +'<div class="row" style="margin:12px 0">'+(SH.thumb?'<img alt="" style="width:84px;height:84px;border-radius:18px;object-fit:cover" src="'+esc(SH.thumb)+'">':'')+'<div style="flex:1"><label>Meal name</label><input id="f-name" value="'+esc(SH.name||'')+'" placeholder="e.g. Nasi lemak"><div style="height:8px"></div><label>Type</label><select id="f-type">'+['Breakfast','Lunch','Dinner','Snack'].map(x=>'<option'+(x===SH.type?' selected':'')+'>'+x+'</option>').join('')+'</select></div></div>'
   +(SH.loading?'<div class="ai"><span class="spin"></span>'+esc(SH.step||'Working…')+'</div>':SH.err?'<div class="ai w">'+esc(SH.err)+'</div>':a?'<div class="ai">✨ AI estimate · '+esc(a.confidence||'medium')+' confidence'+(a.note?' – '+esc(a.note):'')+'</div>':'')
   +(a&&a.items&&a.items.length?'<p class="note" style="margin:0 0 6px">'+a.items.map(i=>esc(i.food)+(i.portion?' ('+esc(i.portion)+')':'')+' '+fmt(i.kcal)).join(' · ')+'</p>':'')
-  +(SH.base?'<label>Portion size</label><div class="chips">'+[.5,1,1.5,2].map(m=>'<button data-act="mult" data-m="'+m+'" class="'+(SH.mult===m?'on':'')+'">'+({.5:'½×',1:'1×',1.5:'1½×',2:'2×'}[m])+'</button>').join('')+'</div>':'')
+  +(SH.base?'<label>Portion size</label><div class="chips">'+[.5,1,1.5,2,3].map(m=>'<button data-act="mult" data-m="'+m+'" class="'+(SH.mult===m?'on':'')+'">'+({.5:'½×',1:'1×',1.5:'1½×',2:'2×',3:'3×'}[m])+'</button>').join('')+'</div><div class="row" style="align-items:center;margin:6px 0 2px"><button class="ib" style="flex:none;background:var(--bg)" data-act="mstep" data-d="-0.25" aria-label="Smaller portion">−</button><input id="f-mult" type="number" inputmode="decimal" step="0.05" min="0.1" value="'+SH.mult+'" style="text-align:center" aria-label="Custom portion multiplier"><button class="ib" style="flex:none;background:var(--bg)" data-act="mstep" data-d="0.25" aria-label="Bigger portion">+</button></div><p class="note" style="margin:2px 0 0">Type any amount, e.g. 1.25 or 2.5 portions</p>':'')
   +'<div class="g2">'+[['kcal','Calories'],['p','Protein (g)'],['c','Carbs (g)'],['f','Fat (g)']].map(([k,l])=>'<div><label>'+l+'</label><input type="number" inputmode="decimal" min="0" id="f-'+k+'" value="'+(SH.v[k]==null?'':SH.v[k])+'"></div>').join('')+'</div>'
   +'<div class="btns"><button class="sec" data-act="cancel">Cancel</button><button class="pri" data-act="save" '+(SH.loading?'disabled':'')+'>Save meal</button></div></div></div>';
 }
 function setVals(m){['kcal','p','c','f'].forEach(k=>{SH.v[k]=Math.round(SH.base[k]*m);$('#f-'+k).value=SH.v[k]})}
 function applyAI(r){
   SH.ai=r;SH.name=r.name||SH.name;SH.base={kcal:+r.kcal||0,p:+r.protein||0,c:+r.carbs||0,f:+r.fat||0};SH.mult=1;
-  SH.v={kcal:Math.round(SH.base.kcal),p:Math.round(SH.base.p),c:Math.round(SH.base.c),f:Math.round(SH.base.f)};SH.loading=false;SH.err='';
+  SH.v={kcal:Math.round(SH.base.kcal),p:Math.round(SH.base.p),c:Math.round(SH.base.c),f:Math.round(SH.base.f)};SH.loading=false;SH.err='';fb('done');
 }
 const fail=e=>{SH.loading=false;SH.err=(e&&e.message==='Failed to fetch'?'Can’t reach the backend.':(e&&e.message)||'Something went wrong.')+' You can still enter the numbers yourself.'};
 async function decode(file){
@@ -278,12 +279,41 @@ async function save(){
 }
 function goalsSheet(){
   const g=goals(me());
-  $('#layer').innerHTML='<div class="scrim" data-act="scrim"><div class="sheet"><div class="grab"></div><h2>Your daily goals</h2><div class="g2"><div><label>Calories</label><input type="number" inputmode="numeric" id="g-k" value="'+g.k+'"></div><div><label>Protein (g)</label><input type="number" inputmode="numeric" id="g-p" value="'+g.p+'"></div></div><label>Email me when my partner logs a meal (optional)</label><input type="email" id="g-e" value="'+esc((S.people[me()]||{}).email||'')+'" placeholder="you@gmail.com"><p class="note">Signed in as '+esc(me())+'. Carbs and fat targets are set at 50% and 30% of calories.</p><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="invite">🔗 Share setup link with partner</button></div><div class="btns"><button class="sec" data-act="reset">Sign out</button><button class="pri" data-act="savegoals">Save goals</button></div></div></div>';
+  $('#layer').innerHTML='<div class="scrim" data-act="scrim"><div class="sheet"><div class="grab"></div><h2>Your daily goals</h2><div class="g2"><div><label>Calories</label><input type="number" inputmode="numeric" id="g-k" value="'+g.k+'"></div><div><label>Protein (g)</label><input type="number" inputmode="numeric" id="g-p" value="'+g.p+'"></div></div><label>Email me when my partner logs a meal (optional)</label><input type="email" id="g-e" value="'+esc((S.people[me()]||{}).email||'')+'" placeholder="you@gmail.com"><label style="display:flex;align-items:center;gap:10px;font-size:16px;color:var(--ink);margin:14px 0 6px"><input type="checkbox" id="g-h" '+(ls('plate-hap')==='off'?'':'checked')+'> Haptic feedback (vibration)</label><label style="display:flex;align-items:center;gap:10px;font-size:16px;color:var(--ink);margin:0 0 10px"><input type="checkbox" id="g-s" '+(ls('plate-snd')==='off'?'':'checked')+'> Sounds</label><p class="note">Signed in as '+esc(me())+'. Carbs and fat targets are set at 50% and 30% of calories.</p><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="invite">🔗 Share setup link with partner</button></div><div class="btns"><button class="sec" data-act="reset">Sign out</button><button class="pri" data-act="savegoals">Save goals</button></div></div></div>';
 }
+
+/* ---------- haptics + sounds ---------- */
+function setMult(m){SH.mult=m;setVals(m);$('#f-mult').value=m;document.querySelectorAll('.chips button[data-m]').forEach(b=>b.classList.toggle('on',+b.dataset.m===m))}
+const hapEl=(()=>{const l=document.createElement('label');l.setAttribute('aria-hidden','true');l.style.cssText='position:fixed;left:-80px;top:0;width:40px;height:40px;opacity:.01;pointer-events:none';const i=document.createElement('input');i.type='checkbox';i.setAttribute('switch','');l.appendChild(i);document.body.appendChild(l);return l})();
+function haptic(n){
+  if(ls('plate-hap')==='off')return;
+  try{if(navigator.vibrate&&!/iPhone|iPad/.test(navigator.userAgent)){navigator.vibrate(n>1?[12,50,12]:10);return}
+    for(let i=0;i<n;i++){if(i===0)hapEl.click();else setTimeout(()=>hapEl.click(),i*90)}}catch(e){}
+}
+let AC=null;
+function beep(fr,dur,vol){
+  try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;AC=AC||new A();if(AC.state==='suspended')AC.resume();
+    let t=AC.currentTime;fr.forEach(f=>{const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;
+      g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
+      o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+dur+.02);t+=dur*.8})}catch(e){}
+}
+function tap(){haptic(1);try{if(AC&&AC.state==='suspended')AC.resume()}catch(e){}}
+function fb(k){
+  haptic(k==='ok'||k==='done'?2:1);
+  if(ls('plate-snd')==='off')return;
+  const s={ok:[[659,880],.11,.07],done:[[784,1047],.1,.06],del:[[440,330],.09,.06],err:[[220,180],.14,.07],note:[[880],.12,.05]}[k];if(s)beep(s[0],s[1],s[2]);
+}
+document.addEventListener('change',e=>{
+  if(e.target.id==='g-h'){ls('plate-hap',e.target.checked?'on':'off');if(e.target.checked)haptic(2)}
+  if(e.target.id==='g-s'){ls('plate-snd',e.target.checked?'on':'off');if(e.target.checked)beep([659,880],.11,.07)}
+});
+document.addEventListener('input',e=>{
+  if(e.target.id==='f-mult'&&SH&&SH.base){const m=parseFloat(e.target.value);if(m>0&&m<=20){SH.mult=m;setVals(m);document.querySelectorAll('.chips button[data-m]').forEach(b=>b.classList.toggle('on',+b.dataset.m===m))}}
+});
 
 /* ---------- events ---------- */
 document.addEventListener('click',async e=>{
-  const el=e.target.closest('[data-act]');if(!el)return;const a=el.dataset.act;
+  const el=e.target.closest('[data-act]');if(!el)return;const a=el.dataset.act;if(a!=='scrim')tap();
   if(a==='scrim'){if(e.target===el){SH=null;sheet()}return}
   if(a==='connect'){
     const url=DEFAULT_URL||$('#s-url').value.trim(),key=$('#s-key').value,who=$('#s-me').value.trim();
@@ -301,7 +331,7 @@ document.addEventListener('click',async e=>{
   else if(a==='csv')csv();
   else if(a==='snap'){S.view=me();$('#file').value='';$('#file').click()}
   else if(a==='manual'){SH={manual:1,thumb:'',name:'',type:mtype(),v:{},base:null,mult:1,ai:null,loading:false,err:''};sheet()}
-  else if(a==='recent'){const m=Object.values(S.meals.filter(x=>x.who===me()).sort((x,y)=>y.ts-x.ts).reduce((o,x)=>{const k=x.name.toLowerCase();if(!o[k])o[k]=x;return o},{})).slice(0,6)[+el.dataset.i];SH.name=m.name;SH.type=m.type;SH.v={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH.base=null;SH.ai=null;sheet()}
+  else if(a==='recent'){const m=Object.values(S.meals.filter(x=>x.who===me()).sort((x,y)=>y.ts-x.ts).reduce((o,x)=>{const k=x.name.toLowerCase();if(!o[k])o[k]=x;return o},{})).slice(0,6)[+el.dataset.i];SH.name=m.name;SH.type=m.type;SH.v={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH.base={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH.mult=1;SH.ai=null;sheet()}
   else if(a==='edit'){const m=S.meals.find(x=>x.id===el.dataset.id);if(!m)return;const b={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH={editId:m.id,thumb:m.thumb||'',name:m.name,type:m.type,v:Object.assign({},b),base:b,mult:1,ai:null,loading:false,err:''};sheet()}
   else if(a==='metric'){S.metric=el.dataset.m;render(1)}
   else if(a==='sum'){
@@ -313,7 +343,8 @@ document.addEventListener('click',async e=>{
   }
   else if(a==='estimate')estimate();
   else if(a==='cancel'){SH=null;sheet()}
-  else if(a==='mult'){SH.mult=+el.dataset.m;setVals(SH.mult);document.querySelectorAll('.chips button[data-m]').forEach(b=>b.classList.toggle('on',+b.dataset.m===SH.mult))}
+  else if(a==='mult')setMult(+el.dataset.m);
+  else if(a==='mstep')setMult(Math.max(.1,Math.round((SH.mult+ +el.dataset.d)*100)/100));
   else if(a==='save')save();
   else if(a==='goals')goalsSheet();
   else if(a==='invite'){const link=location.origin+location.pathname+'#u='+encodeURIComponent(cfg.url)+'&k='+encodeURIComponent(cfg.key);
@@ -324,7 +355,7 @@ document.addEventListener('click',async e=>{
     if(g.email&&g.email.indexOf('@')<1)return toast('That email doesn’t look right');
     try{await api('goals',g);S.people[me()]=g;$('#layer').innerHTML='';render();toast('Goals updated')}catch(x){toast('Couldn’t save goals')}
   }
-  else if(a==='del'){if(confirm('Delete this meal?'))try{el.closest('.meal').style.opacity=.4;await api('del',{id:el.dataset.id,who:me()});S.meals=S.meals.filter(m=>m.id!==el.dataset.id);render()}catch(x){el.closest('.meal').style.opacity=1;toast('Couldn’t delete')}}
+  else if(a==='del'){if(confirm('Delete this meal?'))try{el.closest('.meal').style.opacity=.4;await api('del',{id:el.dataset.id,who:me()});S.meals=S.meals.filter(m=>m.id!==el.dataset.id);render();fb('del')}catch(x){el.closest('.meal').style.opacity=1;toast('Couldn’t delete')}}
 });
 document.addEventListener('change',e=>{
   if(e.target.id==='c-f'||e.target.id==='c-t'){const f=$('#c-f').value,t=$('#c-t').value;if(f&&t&&f<=t){S.from=f;S.to=t;render()}}
