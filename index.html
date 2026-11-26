@@ -345,13 +345,29 @@ function haptic(n){
     for(let i=0;i<n;i++){if(i===0)hapEl.click();else setTimeout(()=>hapEl.click(),i*90)}}catch(e){}
 }
 let AC=null;
+const AUD=new Audio(),wavCache={};
+function wavUrl(fr,dur,vol){
+  const sr=22050,step=Math.floor(sr*dur*.8),n=step*(fr.length-1)+Math.floor(sr*dur*1.3),buf=new ArrayBuffer(44+n*2),v=new DataView(buf);
+  const ws=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i))};
+  ws(0,'RIFF');v.setUint32(4,36+n*2,true);ws(8,'WAVE');ws(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);ws(36,'data');v.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++){const k=Math.min(fr.length-1,Math.floor(i/step)),t=(i-k*step)/sr,f=fr[k],env=Math.min(1,t*300)*Math.exp(-t*(5/dur));
+    const x=(Math.sin(2*Math.PI*f*t)+.35*Math.sin(4*Math.PI*f*t))*env*vol*32767/1.35;v.setInt16(44+i*2,Math.max(-32767,Math.min(32767,x)),true)}
+  return URL.createObjectURL(new Blob([buf],{type:'audio/wav'}));
+}
+function playWav(fr,dur,vol){
+  const key=fr.join('-')+'|'+dur+'|'+vol,url=wavCache[key]||(wavCache[key]=wavUrl(fr,dur,vol));
+  AUD.src=url;const p=AUD.play();return p&&p.then?p:Promise.resolve();
+}
 function beep(fr,dur,vol){
+  try{playWav(fr,dur,Math.min(.8,vol*6)).catch(()=>beepWA(fr,dur,vol*3))}catch(e){beepWA(fr,dur,vol*3)}
+}
+function beepWA(fr,dur,vol){
   try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;AC=AC||new A();if(AC.state==='suspended')AC.resume();
     let t=AC.currentTime;fr.forEach(f=>{const o=AC.createOscillator(),g=AC.createGain();o.type='sine';o.frequency.value=f;
       g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
       o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+dur+.02);t+=dur*.8})}catch(e){}
 }
-function unlockAudio(){try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;AC=AC||new A();if(AC.state!=='running')AC.resume();const b=AC.createBuffer(1,1,22050),s=AC.createBufferSource();s.buffer=b;s.connect(AC.destination);s.start(0)}catch(e){}}
+function unlockAudio(){try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}if(!AUD._u){AUD._u=1;try{playWav([1],.05,0).catch(()=>{})}catch(e){}}try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;AC=AC||new A();if(AC.state!=='running')AC.resume();const b=AC.createBuffer(1,1,22050),s=AC.createBufferSource();s.buffer=b;s.connect(AC.destination);s.start(0)}catch(e){}}
 function tap(){haptic(1);unlockAudio()}
 function fb(k){
   haptic(k==='ok'||k==='done'?2:1);
@@ -409,9 +425,10 @@ document.addEventListener('click',async e=>{
   else if(a==='mstep')setMult(Math.max(.1,Math.round((SH.mult+ +el.dataset.d)*100)/100));
   else if(a==='save')save();
   else if(a==='goals')goalsSheet();
-  else if(a==='testh'){const v=(navigator.userAgent.match(/OS (\d+)[_.](\d+)/)||[]);try{hapEl.click();setTimeout(()=>hapEl.click(),120)}catch(x){}
-    $('#fbnote').textContent='Did you feel two taps? If not: this needs iOS 17.4 or newer (yours: '+(v[1]?v[1]+'.'+v[2]:'unknown')+'), and Settings → Sounds & Haptics → System Haptics must be on. Some iPhones don’t allow it from a web page at all.'}
-  else if(a==='tests'){unlockAudio();beep([659,880],.14,.12);$('#fbnote').textContent='Did you hear two notes? If not: turn off silent mode (the side switch), raise the ringer volume, and make sure the “Sounds” box above is ticked.'}
+  else if(a==='testh'){const v=(navigator.userAgent.match(/OS (\d+)[_.](\d+)/)||[]);try{hapEl.click();setTimeout(()=>hapEl.click(),150)}catch(x){}
+    $('#fbnote').textContent='Vibration test sent · iOS '+(v[1]?v[1]+'.'+v[2]:'unknown')+' · '+(navigator.standalone?'Home Screen app':'Safari tab')+'. Did you feel a tap? If not: check Settings → Sounds & Haptics → System Haptics is on. If it is, your iPhone doesn’t let web pages trigger haptics, and this can’t be fixed from inside the app.'}
+  else if(a==='tests'){unlockAudio();let r='plays OK';try{await playWav([659,880],.2,.6)}catch(x){r='was blocked ('+((x&&x.name)||'error')+')'}
+    $('#fbnote').textContent='Sound '+r+' · silent-mode override: '+(navigator.audioSession?'available':'not available')+'. Did you hear two notes? If not, press the volume-up button on the side while the app is open (this controls media volume), and check the “Sounds” box above is ticked.'}
   else if(a==='clearcache'){ls('plate-cache','');ls('plate-sum','');try{sessionStorage.setItem('plate-boot','0')}catch(x){}location.reload()}
   else if(a==='diag'){
     const out=[],box=$('#diag');box.innerHTML='<div class="ai"><span class="spin"></span>Checking…</div>';
