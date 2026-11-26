@@ -60,10 +60,16 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 4px;b
 @media(prefers-color-scheme:dark){#sync{color:#04211c}}
 .fade{animation:fi .18s ease-out}@keyframes fi{from{opacity:.35}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.safe *{animation:none!important;transition:none!important}
+button:active{transform:scale(.96)}
+.it{border:1px solid var(--line);border-radius:16px;padding:10px;margin-bottom:8px}.g4i{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.g4i input{padding:9px 6px}.it-t{margin:6px 0 0}
 </style></head>
 <body><div id="bar"><i></i></div><div id="sync"></div><div id="app"></div><div id="layer"></div><input type="file" id="file" accept="image/*" hidden>
 <script>
 const $=s=>document.querySelector(s);
+const BOOT=(()=>{try{const n=(+sessionStorage.getItem('plate-boot')||0)+1;sessionStorage.setItem('plate-boot',n);return n}catch(e){return 1}})();
+const SAFE=BOOT>=3; /* page failed to finish starting twice in a row -> safe mode */
+if(SAFE){try{localStorage.removeItem('plate-cache');localStorage.removeItem('plate-sum')}catch(e){}document.documentElement.classList.add('safe')}
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ymd=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 const pd=s=>new Date(s+'T00:00:00'),addD=(s,n)=>{const d=pd(s);d.setDate(d.getDate()+n);return ymd(d)};
@@ -78,13 +84,22 @@ keepLink();
 const S={metric:'k',sums:{},tab:'today',day:TODAY,meals:[],people:{},view:null,ready:false,mode:'week',anchor:TODAY,from:addD(TODAY,-29),to:TODAY,err:''};
 const me=()=>cfg&&cfg.me;
 try{S.sums=JSON.parse(ls('plate-sum')||'{}')}catch(e){}
-try{const c=cfg&&JSON.parse(ls('plate-cache')||'null');if(c&&c.meals){S.meals=c.meals;S.people=c.people||{};S.view=me();S.ready=true;S.seen=new Set(c.meals.map(m=>m.id))}}catch(e){}
+try{const c=!SAFE&&cfg&&JSON.parse(ls('plate-cache')||'null');if(c&&c.meals){S.meals=c.meals;S.people=c.people||{};S.view=me();S.ready=true;S.seen=new Set(c.meals.map(m=>m.id))}}catch(e){}
 const goals=w=>{const g=S.people[w]||{},k=g.goalKcal||2000;return{k,p:g.goalP||100,c:k*.5/4,f:k*.3/9}};
 const ids=()=>{const a=Object.keys(S.people).filter(x=>x!==me());return[me()].concat(a).slice(0,2)};
 const toast=t=>{if(/^Couldn’t|^Can’t/.test(t))fb('err');else if(/✓/.test(t))fb('ok');else if(/ logged /.test(t))fb('note');const e=document.createElement('div');e.className='toast';e.textContent=t;document.body.appendChild(e);setTimeout(()=>e.remove(),3200)};
 async function api(action,data){
-  const r=await fetch(cfg.url,{method:'POST',body:JSON.stringify(Object.assign({key:cfg.key,action},data||{}))});
-  const j=await r.json();if(!j.ok)throw new Error(j.error||'Request failed');return j;
+  const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),action==='ai'||action==='sum'?90000:30000);
+  try{
+    const r=await fetch(cfg.url,{method:'POST',body:JSON.stringify(Object.assign({key:cfg.key,action},data||{})),signal:ctl.signal});
+    const txt=await r.text();let j;
+    try{j=JSON.parse(txt)}catch(e){throw new Error('The backend sent back an error page instead of data. In Apps Script run "authorize", then Deploy → Manage deployments → New version.')}
+    if(!j.ok)throw new Error(j.error||'Request failed');return j;
+  }catch(e){
+    if(e.name==='AbortError')throw new Error('Timed out waiting for the backend. Check your internet and try again.');
+    if(/Failed to fetch|Load failed|NetworkError/i.test(e.message))throw new Error('Can’t reach the backend – check your connection and the web app URL.');
+    throw e;
+  }finally{clearTimeout(tm)}
 }
 function busy(on){
   $('#bar').classList.toggle('on',on);const p=$('#sync');p.classList.toggle('on',on);
@@ -98,8 +113,8 @@ async function load(silent){
     S.seen=new Set(j.meals.map(m=>m.id));
     S.meals=j.meals;S.people={};j.people.forEach(p=>S.people[p.who]=p);
     if(!S.people[me()]){await api('goals',{who:me(),goalKcal:2000,goalP:100,init:true});S.people[me()]={who:me(),goalKcal:2000,goalP:100}}
-    if(!S.view)S.view=me();S.ready=true;S.err='';ls('plate-cache',JSON.stringify({meals:S.meals,people:S.people}));
-  }catch(e){if(S.ready&&!S.warned){S.warned=1;toast('Couldn’t refresh – showing saved data')}if(!S.ready)S.err=e.message==='Failed to fetch'?'Can’t reach the backend. Check the web app URL and your internet connection.':e.message}
+    if(!S.view)S.view=me();S.ready=true;S.err='';if(!SAFE){ls('plate-cache',JSON.stringify({meals:S.meals.map(m=>m.day>=addD(TODAY,-1)?m:Object.assign({},m,{thumb:''})),people:S.people}));setTimeout(()=>{try{sessionStorage.setItem('plate-boot','0')}catch(e){}},4000)}
+  }catch(e){if(S.ready&&!S.warned){S.warned=1;toast('Couldn’t refresh – showing saved data')}if(!S.ready)S.err=e.message}
   if(!silent)setTimeout(()=>busy(false),Math.max(0,1000-(Date.now()-t0)));
   if(!SH&&!$('#layer').innerHTML)render();
 }
@@ -223,25 +238,26 @@ function sumCard(w,f,t,label){
 let SH=null;
 const mtype=()=>{const h=new Date().getHours();return h<11?'Breakfast':h<15?'Lunch':h<18?'Snack':'Dinner'};
 function sheet(){
-  const L=$('#layer');if(!SH){L.innerHTML='';return}
+  const L=$('#layer');if(!SH){L.innerHTML='';return}const st=(L.querySelector('.sheet')||{}).scrollTop||0;
   const a=SH.ai,rec=SH.manual&&!SH.loading?Object.values(S.meals.filter(m=>m.who===me()).sort((x,y)=>y.ts-x.ts).reduce((o,m)=>{const k=m.name.toLowerCase();if(!o[k])o[k]=m;return o},{})).slice(0,6):[];
   L.innerHTML='<div class="scrim" data-act="scrim"><div class="sheet"><div class="grab"></div>'
   +(SH.editId?'<h2 style="margin:0 0 10px">Edit meal</h2>':'')
-  +(SH.manual?'<label>Describe what you ate</label><div class="row"><input id="f-txt" placeholder="e.g. 2 roti canai with dhal and teh tarik"><button class="sec" style="flex:none;padding:0 14px;border-radius:12px;border:0;font:inherit;font-weight:700;color:var(--acc)" data-act="estimate">Estimate</button></div>'+(rec.length?'<label style="margin-top:12px">Recent meals</label><div class="chips">'+rec.map((m,i)=>'<button data-act="recent" data-i="'+i+'">'+esc(m.name)+'</button>').join('')+'</div>':''):'')
+  +(SH.manual?'<label>Describe what you ate</label><div class="row"><input id="f-txt" value="'+esc(SH.txt||'')+'" placeholder="e.g. 2 roti canai with dhal and teh tarik"><button class="sec" style="flex:none;padding:0 14px;border-radius:12px;border:0;font:inherit;font-weight:700;color:var(--acc)" data-act="estimate">Estimate</button></div>'+(rec.length?'<label style="margin-top:12px">Recent meals</label><div class="chips">'+rec.map((m,i)=>'<button data-act="recent" data-i="'+i+'">'+esc(m.name)+'</button>').join('')+'</div>':''):'')
   +'<div class="row" style="margin:12px 0">'+(SH.thumb?'<img alt="" style="width:84px;height:84px;border-radius:18px;object-fit:cover" src="'+esc(SH.thumb)+'">':'')+'<div style="flex:1"><label>Meal name</label><input id="f-name" value="'+esc(SH.name||'')+'" placeholder="e.g. Nasi lemak"><div style="height:8px"></div><label>Type</label><select id="f-type">'+['Breakfast','Lunch','Dinner','Snack'].map(x=>'<option'+(x===SH.type?' selected':'')+'>'+x+'</option>').join('')+'</select></div></div>'
   +(SH.loading?'<div class="ai"><span class="spin"></span>'+esc(SH.step||'Working…')+'</div>':SH.err?'<div class="ai w">'+esc(SH.err)+'</div>':a?'<div class="ai">✨ AI estimate · '+esc(a.confidence||'medium')+' confidence'+(a.note?' – '+esc(a.note):'')+'</div>':'')
-  +(a&&a.items&&a.items.length?'<p class="note" style="margin:0 0 6px">'+a.items.map(i=>esc(i.food)+(i.portion?' ('+esc(i.portion)+')':'')+' '+fmt(i.kcal)).join(' · ')+'</p>':'')
-  +(SH.base?'<label>Portion size</label><div class="chips">'+[.5,1,1.5,2,3].map(m=>'<button data-act="mult" data-m="'+m+'" class="'+(SH.mult===m?'on':'')+'">'+({.5:'½×',1:'1×',1.5:'1½×',2:'2×',3:'3×'}[m])+'</button>').join('')+'</div><div class="row" style="align-items:center;margin:6px 0 2px"><button class="ib" style="flex:none;background:var(--bg)" data-act="mstep" data-d="-0.25" aria-label="Smaller portion">−</button><input id="f-mult" type="number" inputmode="decimal" step="0.05" min="0.1" value="'+SH.mult+'" style="text-align:center" aria-label="Custom portion multiplier"><button class="ib" style="flex:none;background:var(--bg)" data-act="mstep" data-d="0.25" aria-label="Bigger portion">+</button></div><p class="note" style="margin:2px 0 0">Type any amount, e.g. 1.25 or 2.5 portions</p>':'')
-  +'<div class="g2">'+[['kcal','Calories'],['p','Protein (g)'],['c','Carbs (g)'],['f','Fat (g)']].map(([k,l])=>'<div><label>'+l+'</label><input type="number" inputmode="decimal" min="0" id="f-'+k+'" value="'+(SH.v[k]==null?'':SH.v[k])+'"></div>').join('')+'</div>'
-  +'<div class="btns"><button class="sec" data-act="cancel">Cancel</button><button class="pri" data-act="save" '+(SH.loading?'disabled':'')+'>Save meal</button></div></div></div>';
+  +(SH.loading?'':'<div style="margin:10px 0 4px"><label>Ingredients'+(SH.items?'':' (optional – pick from the list)')+'</label>'+(SH.items?'<p class="note" style="margin:0 0 8px">Numbers are per serving; quantity multiplies them. Totals update automatically.</p><div id="items">'+itemsHTML()+'</div>':'')+'<select id="f-pick" aria-label="Add ingredient">'+PICK+'</select></div>')
+  +(SH.base&&!SH.items?'<label>Portion size</label><div class="chips">'+[.5,1,1.5,2,3].map(m=>'<button data-act="mult" data-m="'+m+'" class="'+(SH.mult===m?'on':'')+'">'+({.5:'½×',1:'1×',1.5:'1½×',2:'2×',3:'3×'}[m])+'</button>').join('')+'</div><div class="row" style="align-items:center;margin:6px 0 2px"><button class="ib" style="flex:none;background:var(--bg)" data-act="mstep" data-d="-0.25" aria-label="Smaller portion">−</button><input id="f-mult" type="number" inputmode="decimal" step="0.05" min="0.1" value="'+SH.mult+'" style="text-align:center" aria-label="Custom portion multiplier"><button class="ib" style="flex:none;background:var(--bg)" data-act="mstep" data-d="0.25" aria-label="Bigger portion">+</button></div><p class="note" style="margin:2px 0 0">Type any amount, e.g. 1.25 or 2.5 portions</p>':'')
+  +'<div class="g2">'+[['kcal','Calories'],['p','Protein (g)'],['c','Carbs (g)'],['f','Fat (g)']].map(([k,l])=>'<div><label>'+l+'</label><input type="number" inputmode="decimal" min="0" id="f-'+k+'" value="'+(SH.v[k]==null?'':SH.v[k])+'"'+(SH.items?' readonly':'')+'></div>').join('')+'</div>'
+  +'<div class="btns"><button class="sec" data-act="cancel">Cancel</button><button class="pri" data-act="save" '+(SH.loading?'disabled':'')+'>Save meal</button></div></div></div>';const sn=L.querySelector('.sheet');if(sn)sn.scrollTop=st;
 }
 function setVals(m){['kcal','p','c','f'].forEach(k=>{SH.v[k]=Math.round(SH.base[k]*m);$('#f-'+k).value=SH.v[k]})}
 function applyAI(r){
-  SH.ai=r;SH.name=r.name||SH.name;SH.base={kcal:+r.kcal||0,p:+r.protein||0,c:+r.carbs||0,f:+r.fat||0};SH.mult=1;
-  SH.v={kcal:Math.round(SH.base.kcal),p:Math.round(SH.base.p),c:Math.round(SH.base.c),f:Math.round(SH.base.f)};SH.loading=false;SH.err='';fb('done');
+  SH.ai=r;SH.name=r.name||SH.name;SH.base={kcal:+r.kcal||0,p:+r.protein||0,c:+r.carbs||0,f:+r.fat||0};SH.mult=1;SH.items=toItems(r.items);
+  SH.v={kcal:Math.round(SH.base.kcal),p:Math.round(SH.base.p),c:Math.round(SH.base.c),f:Math.round(SH.base.f)};SH.loading=false;SH.err='';if(SH.items)recalc();fb('done');
 }
-const fail=e=>{SH.loading=false;SH.err=(e&&e.message==='Failed to fetch'?'Can’t reach the backend.':(e&&e.message)||'Something went wrong.')+' You can still enter the numbers yourself.'};
+const fail=e=>{SH.loading=false;SH.err=((e&&e.message)||'Something went wrong.')+' You can still enter the numbers yourself.'};
 async function decode(file){
+  try{if(window.createImageBitmap)return await createImageBitmap(file,{resizeWidth:SAFE?640:1000,resizeQuality:'medium'})}catch(e){}
   const url=URL.createObjectURL(file);
   try{return await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=url})}finally{setTimeout(()=>URL.revokeObjectURL(url),1000)}
 }
@@ -269,24 +285,62 @@ async function save(){
   const sb=$('[data-act=save]');sb.disabled=true;sb.innerHTML='<span class="spin"></span>Saving…';const undo=()=>{sb.disabled=false;sb.textContent='Save meal'};
   if(SH.editId){
     const upd={type:$('#f-type').value,name:$('#f-name').value.trim()||'Meal',kcal:v('kcal'),p:v('p'),c:v('c'),f:v('f')};
+    if(SH.items)upd.items=itemsStr();else if(SH.hadItems)upd.items='';
     try{await api('upd',{id:SH.editId,who:me(),meal:upd});Object.assign(S.meals.find(x=>x.id===SH.editId),upd);SH=null;sheet();render();toast('Meal updated ✓')}
     catch(e){undo();toast('Couldn’t update: '+e.message)}
     return;
   }
-  const meal={who:me(),day:S.day,ts:S.day===TODAY?Date.now():pd(S.day).getTime()+12*36e5,type:$('#f-type').value,name:$('#f-name').value.trim()||'Meal',kcal:v('kcal'),p:v('p'),c:v('c'),f:v('f'),thumb:SH.thumb||''};
+  const meal={who:me(),day:S.day,ts:S.day===TODAY?Date.now():pd(S.day).getTime()+12*36e5,type:$('#f-type').value,name:$('#f-name').value.trim()||'Meal',kcal:v('kcal'),p:v('p'),c:v('c'),f:v('f'),thumb:SH.thumb||'',items:itemsStr()};
   try{const j=await api('add',{meal});meal.id=j.id;S.meals.push(meal);SH=null;S.view=me();S.tab='today';sheet();render();toast('Meal saved ✓')}
   catch(e){undo();toast('Couldn’t save: '+e.message)}
 }
 function goalsSheet(){
   const g=goals(me());
-  $('#layer').innerHTML='<div class="scrim" data-act="scrim"><div class="sheet"><div class="grab"></div><h2>Your daily goals</h2><div class="g2"><div><label>Calories</label><input type="number" inputmode="numeric" id="g-k" value="'+g.k+'"></div><div><label>Protein (g)</label><input type="number" inputmode="numeric" id="g-p" value="'+g.p+'"></div></div><label>Email me when my partner logs a meal (optional)</label><input type="email" id="g-e" value="'+esc((S.people[me()]||{}).email||'')+'" placeholder="you@gmail.com"><label style="display:flex;align-items:center;gap:10px;font-size:16px;color:var(--ink);margin:14px 0 6px"><input type="checkbox" id="g-h" '+(ls('plate-hap')==='off'?'':'checked')+'> Haptic feedback (vibration)</label><label style="display:flex;align-items:center;gap:10px;font-size:16px;color:var(--ink);margin:0 0 10px"><input type="checkbox" id="g-s" '+(ls('plate-snd')==='off'?'':'checked')+'> Sounds</label><p class="note">Signed in as '+esc(me())+'. Carbs and fat targets are set at 50% and 30% of calories.</p><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="invite">🔗 Share setup link with partner</button></div><div class="btns"><button class="sec" data-act="reset">Sign out</button><button class="pri" data-act="savegoals">Save goals</button></div></div></div>';
+  $('#layer').innerHTML='<div class="scrim" data-act="scrim"><div class="sheet"><div class="grab"></div><h2>Your daily goals</h2><div class="g2"><div><label>Calories</label><input type="number" inputmode="numeric" id="g-k" value="'+g.k+'"></div><div><label>Protein (g)</label><input type="number" inputmode="numeric" id="g-p" value="'+g.p+'"></div></div><label>Email me when my partner logs a meal (optional)</label><input type="email" id="g-e" value="'+esc((S.people[me()]||{}).email||'')+'" placeholder="you@gmail.com"><label style="display:flex;align-items:center;gap:10px;font-size:16px;color:var(--ink);margin:14px 0 6px"><input type="checkbox" id="g-h" '+(ls('plate-hap')==='off'?'':'checked')+'> Haptic feedback (vibration)</label><label style="display:flex;align-items:center;gap:10px;font-size:16px;color:var(--ink);margin:0 0 10px"><input type="checkbox" id="g-s" '+(ls('plate-snd')==='off'?'':'checked')+'> Sounds</label><div class="btns" style="margin:0 0 6px"><button class="sec" data-act="testh">📳 Test vibration</button><button class="sec" data-act="tests">🔊 Test sound</button></div><p class="note" id="fbnote" style="margin:0 0 10px"></p><p class="note">Signed in as '+esc(me())+'. Carbs and fat targets are set at 50% and 30% of calories.</p><div id="diag" style="margin:0 0 10px"></div><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="clearcache">🧹 Clear saved data on this phone</button></div><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="diag">🔍 Check connection</button></div><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="invite">🔗 Share setup link with partner</button></div><div class="btns"><button class="sec" data-act="reset">Sign out</button><button class="pri" data-act="savegoals">Save goals</button></div></div></div>';
+}
+
+/* ---------- ingredients ---------- */
+const FOODS=[
+['Rice & noodles','Steamed white rice','1 cup (160 g)',205,4,45,0.4],['Rice & noodles','Coconut rice (nasi lemak)','1 cup (160 g)',280,4,45,9],['Rice & noodles','Fried rice (nasi goreng)','1 plate (250 g)',430,12,62,15],['Rice & noodles','Roti canai','1 piece',300,6,38,13],['Rice & noodles','Fried noodles (mee goreng)','1 plate (300 g)',520,16,70,20],['Rice & noodles','Fried bee hoon','1 plate (250 g)',400,12,60,13],['Rice & noodles','Char kuey teow','1 plate (350 g)',740,20,86,35],['Rice & noodles','Laksa','1 bowl',440,16,58,16],['Rice & noodles','Wantan mee (dry)','1 bowl',410,18,55,12],['Rice & noodles','White bread','1 slice',80,3,15,1],['Rice & noodles','Kaya toast','2 slices',300,5,38,14],['Rice & noodles','Oats, cooked','1 cup',160,6,28,3],
+['Protein','Egg, boiled','1 large',78,6,1,5],['Protein','Egg, fried','1 large',90,6,0.5,7],['Protein','Chicken breast, grilled','100 g',165,31,0,4],['Protein','Fried chicken (with skin)','1 piece (100 g)',280,18,10,19],['Protein','Chicken curry','1 portion (150 g)',190,14,6,12],['Protein','Chicken rendang','100 g',220,18,5,14],['Protein','Beef rendang','100 g',195,22,4,10],['Protein','Fish, steamed','100 g',120,22,0,3],['Protein','Fish, fried','100 g',220,20,6,13],['Protein','Prawns, cooked','100 g',99,24,0,0.3],['Protein','Tofu, firm','100 g',144,17,3,9],['Protein','Tempeh, fried','50 g',140,9,8,9],['Protein','Satay chicken','1 stick',60,5,3,3.5],['Protein','Dhal curry','½ cup',120,6,15,4],['Protein','Peanuts','1 handful (30 g)',170,8,5,15],
+['Vegetables & fruit','Mixed vegetables, stir-fried','1 cup',90,3,8,5],['Vegetables & fruit','Broccoli','1 cup',31,3,6,0.3],['Vegetables & fruit','Cucumber','100 g',15,1,4,0.1],['Vegetables & fruit','Banana','1 medium',105,1,27,0.4],['Vegetables & fruit','Apple','1 medium',95,0.5,25,0.3],['Vegetables & fruit','Papaya','1 cup',55,1,14,0.2],['Vegetables & fruit','Watermelon','1 cup',46,1,11.5,0.2],['Vegetables & fruit','Orange','1 medium',62,1,15,0.2],
+['Drinks','Water','1 glass',0,0,0,0],['Drinks','Teh tarik','1 glass (250 ml)',140,3,22,4],['Drinks','Kopi O (with sugar)','1 cup',60,0.3,15,0],['Drinks','Kopi (with condensed milk)','1 cup',120,2,18,4],['Drinks','Milo, prepared','1 glass',170,5,29,4],['Drinks','Milk, full cream','1 cup (240 ml)',150,8,12,8],['Drinks','Soy milk, sweetened','1 cup',100,7,8,4],['Drinks','Soft drink','1 can (330 ml)',140,0,35,0],['Drinks','Plain yogurt','1 cup (245 g)',150,8.5,11.4,8],
+['Extras & snacks','Cooking oil','1 tbsp',120,0,0,14],['Extras & snacks','Butter','1 tbsp',100,0.1,0,11.5],['Extras & snacks','Sugar','1 tsp',16,0,4,0],['Extras & snacks','Kaya','1 tbsp',70,0.5,12,2.5],['Extras & snacks','Sambal','1 tbsp',30,0.5,3,2],['Extras & snacks','Coconut milk (santan)','¼ cup',110,1,2,11],['Extras & snacks','Cendol','1 bowl',330,2,55,12],['Extras & snacks','Curry puff','1 piece',180,3,18,11],['Extras & snacks','Biscuits, plain','2 pieces',70,1,11,2.5],['Extras & snacks','Chocolate bar','1 bar (45 g)',230,3,26,13],['Extras & snacks','Potato chips','1 small pack (28 g)',150,2,15,10],['Extras & snacks','French fries','1 medium (115 g)',365,4,48,17],['Extras & snacks','Burger','1 regular',300,15,30,14],['Extras & snacks','Pizza','1 slice',285,12,36,10]];
+const PICK='<option value="">+ Add ingredient from list…</option>'+[...new Set(FOODS.map(f=>f[0]))].map(g=>'<optgroup label="'+g+'">'+FOODS.map((f,i)=>f[0]===g?'<option value="'+i+'">'+f[1]+' – '+f[2]+'</option>':'').join('')+'</optgroup>').join('')+'<option value="custom">✏️ Custom ingredient…</option>';
+const toItems=a=>Array.isArray(a)&&a.length?a.slice(0,15).map(i=>({n:String(i.food||'Ingredient'),u:String(i.portion||'1 serving'),q:1,k:+i.kcal||0,p:+i.protein||0,c:+i.carbs||0,f:+i.fat||0})):null;
+function parseItems(s){try{const a=JSON.parse(s);return Array.isArray(a)&&a.length?a.map(x=>({n:x[0],u:x[1],q:+x[2]||0,k:+x[3]||0,p:+x[4]||0,c:+x[5]||0,f:+x[6]||0})):null}catch(e){return null}}
+function itemsStr(){if(!SH.items||!SH.items.length)return'';const s=JSON.stringify(SH.items.map(i=>[i.n,i.u,Math.round(i.q*100)/100,i.k,i.p,i.c,i.f]));return s.length<3000?s:''}
+const r1=x=>Math.round(x*10)/10;
+function itemsHTML(){
+  return SH.items.map((i,n)=>'<div class="it" data-i="'+n+'"><div class="row" style="gap:8px;align-items:center"><input class="in-n" value="'+esc(i.n)+'" placeholder="Ingredient" aria-label="Ingredient name"><button class="x" data-act="itdel" data-i="'+n+'" aria-label="Remove ingredient">✕</button></div>'
+   +'<div class="row" style="gap:8px;align-items:center;margin:6px 0"><button class="ib" style="flex:none;background:var(--bg)" data-act="itq" data-i="'+n+'" data-d="-0.25" aria-label="Less">−</button><input class="in-q" type="number" step="0.05" min="0" inputmode="decimal" value="'+i.q+'" style="width:76px;flex:none;text-align:center" aria-label="Quantity"><button class="ib" style="flex:none;background:var(--bg)" data-act="itq" data-i="'+n+'" data-d="0.25" aria-label="More">+</button><input class="in-u" value="'+esc(i.u)+'" placeholder="per serving, e.g. 1 cup" aria-label="Serving size"></div>'
+   +'<div class="g4i">'+[['k','kcal'],['p','Protein'],['c','Carbs'],['f','Fat']].map(([k,l])=>'<div><label>'+l+'</label><input class="in-'+k+'" type="number" min="0" inputmode="decimal" value="'+r1(i[k])+'"></div>').join('')+'</div>'
+   +'<div class="note it-t">= '+Math.round(i.k*i.q)+' kcal · P '+Math.round(i.p*i.q)+' · C '+Math.round(i.c*i.q)+' · F '+Math.round(i.f*i.q)+'</div></div>').join('');
+}
+function recalc(){
+  const t={kcal:0,p:0,c:0,f:0};
+  SH.items.forEach(i=>{t.kcal+=i.k*i.q;t.p+=i.p*i.q;t.c+=i.c*i.q;t.f+=i.f*i.q});
+  SH.v={kcal:Math.round(t.kcal),p:Math.round(t.p),c:Math.round(t.c),f:Math.round(t.f)};
+  ['kcal','p','c','f'].forEach(k=>{const e=$('#f-'+k);if(e)e.value=SH.v[k]});
+  document.querySelectorAll('.it').forEach(el=>{const i=SH.items[+el.dataset.i],s=el.querySelector('.it-t');if(i&&s)s.textContent='= '+Math.round(i.k*i.q)+' kcal · P '+Math.round(i.p*i.q)+' · C '+Math.round(i.c*i.q)+' · F '+Math.round(i.f*i.q)});
+}
+function syncSH(){const n=$('#f-name'),t=$('#f-type'),x=$('#f-txt');if(n)SH.name=n.value;if(t)SH.type=t.value;if(x)SH.txt=x.value}
+function addItem(v){
+  if(!v||!SH)return;syncSH();
+  if(!SH.items){
+    SH.items=[];const g=k=>Math.round(+($('#f-'+k)||{}).value||0);
+    if(g('kcal')+g('p')+g('c')+g('f')>0)SH.items.push({n:'Earlier total',u:'as entered',q:1,k:g('kcal'),p:g('p'),c:g('c'),f:g('f')});
+  }
+  if(v==='custom')SH.items.push({n:'',u:'1 serving',q:1,k:0,p:0,c:0,f:0});
+  else{const f=FOODS[+v];SH.items.push({n:f[1],u:f[2],q:1,k:f[3],p:f[4],c:f[5],f:f[6]})}
+  recalc();sheet();const L=document.querySelectorAll('.it');if(L.length&&L[L.length-1].scrollIntoView)L[L.length-1].scrollIntoView({block:'nearest'});
 }
 
 /* ---------- haptics + sounds ---------- */
 function setMult(m){SH.mult=m;setVals(m);$('#f-mult').value=m;document.querySelectorAll('.chips button[data-m]').forEach(b=>b.classList.toggle('on',+b.dataset.m===m))}
-const hapEl=(()=>{const l=document.createElement('label');l.setAttribute('aria-hidden','true');l.style.cssText='position:fixed;left:-80px;top:0;width:40px;height:40px;opacity:.01;pointer-events:none';const i=document.createElement('input');i.type='checkbox';i.setAttribute('switch','');l.appendChild(i);document.body.appendChild(l);return l})();
+const hapEl=SAFE?null:(()=>{const l=document.createElement('label');l.setAttribute('aria-hidden','true');l.style.cssText='position:fixed;left:-80px;top:0;width:40px;height:40px;opacity:.01;pointer-events:none';const i=document.createElement('input');i.type='checkbox';i.setAttribute('switch','');l.appendChild(i);document.body.appendChild(l);return l})();
 function haptic(n){
-  if(ls('plate-hap')==='off')return;
+  if(SAFE||!hapEl||ls('plate-hap')==='off')return;
   try{if(navigator.vibrate&&!/iPhone|iPad/.test(navigator.userAgent)){navigator.vibrate(n>1?[12,50,12]:10);return}
     for(let i=0;i<n;i++){if(i===0)hapEl.click();else setTimeout(()=>hapEl.click(),i*90)}}catch(e){}
 }
@@ -297,17 +351,23 @@ function beep(fr,dur,vol){
       g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
       o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+dur+.02);t+=dur*.8})}catch(e){}
 }
-function tap(){haptic(1);try{if(AC&&AC.state==='suspended')AC.resume()}catch(e){}}
+function unlockAudio(){try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;AC=AC||new A();if(AC.state!=='running')AC.resume();const b=AC.createBuffer(1,1,22050),s=AC.createBufferSource();s.buffer=b;s.connect(AC.destination);s.start(0)}catch(e){}}
+function tap(){haptic(1);unlockAudio()}
 function fb(k){
   haptic(k==='ok'||k==='done'?2:1);
   if(ls('plate-snd')==='off')return;
   const s={ok:[[659,880],.11,.07],done:[[784,1047],.1,.06],del:[[440,330],.09,.06],err:[[220,180],.14,.07],note:[[880],.12,.05]}[k];if(s)beep(s[0],s[1],s[2]);
 }
 document.addEventListener('change',e=>{
+  if(e.target.id==='f-pick')addItem(e.target.value);
   if(e.target.id==='g-h'){ls('plate-hap',e.target.checked?'on':'off');if(e.target.checked)haptic(2)}
   if(e.target.id==='g-s'){ls('plate-snd',e.target.checked?'on':'off');if(e.target.checked)beep([659,880],.11,.07)}
 });
 document.addEventListener('input',e=>{
+  const t=e.target,row=t.closest&&t.closest('.it');
+  if(row&&SH&&SH.items){const it=SH.items[+row.dataset.i];if(it){const c=t.classList;
+    if(c.contains('in-n'))it.n=t.value;else if(c.contains('in-u'))it.u=t.value;
+    else{const x=Math.max(0,parseFloat(t.value)||0);if(c.contains('in-q'))it.q=x;else if(c.contains('in-k'))it.k=x;else if(c.contains('in-p'))it.p=x;else if(c.contains('in-c'))it.c=x;else if(c.contains('in-f'))it.f=x;recalc()}}return}
   if(e.target.id==='f-mult'&&SH&&SH.base){const m=parseFloat(e.target.value);if(m>0&&m<=20){SH.mult=m;setVals(m);document.querySelectorAll('.chips button[data-m]').forEach(b=>b.classList.toggle('on',+b.dataset.m===m))}}
 });
 
@@ -331,8 +391,8 @@ document.addEventListener('click',async e=>{
   else if(a==='csv')csv();
   else if(a==='snap'){S.view=me();$('#file').value='';$('#file').click()}
   else if(a==='manual'){SH={manual:1,thumb:'',name:'',type:mtype(),v:{},base:null,mult:1,ai:null,loading:false,err:''};sheet()}
-  else if(a==='recent'){const m=Object.values(S.meals.filter(x=>x.who===me()).sort((x,y)=>y.ts-x.ts).reduce((o,x)=>{const k=x.name.toLowerCase();if(!o[k])o[k]=x;return o},{})).slice(0,6)[+el.dataset.i];SH.name=m.name;SH.type=m.type;SH.v={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH.base={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH.mult=1;SH.ai=null;sheet()}
-  else if(a==='edit'){const m=S.meals.find(x=>x.id===el.dataset.id);if(!m)return;const b={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH={editId:m.id,thumb:m.thumb||'',name:m.name,type:m.type,v:Object.assign({},b),base:b,mult:1,ai:null,loading:false,err:''};sheet()}
+  else if(a==='recent'){const m=Object.values(S.meals.filter(x=>x.who===me()).sort((x,y)=>y.ts-x.ts).reduce((o,x)=>{const k=x.name.toLowerCase();if(!o[k])o[k]=x;return o},{})).slice(0,6)[+el.dataset.i];SH.name=m.name;SH.type=m.type;SH.v={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH.base={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH.mult=1;SH.ai=null;SH.items=parseItems(m.items);sheet()}
+  else if(a==='edit'){const m=S.meals.find(x=>x.id===el.dataset.id);if(!m)return;const b={kcal:m.kcal,p:m.p,c:m.c,f:m.f};SH={editId:m.id,thumb:m.thumb||'',name:m.name,type:m.type,v:Object.assign({},b),base:b,mult:1,ai:null,loading:false,err:'',items:parseItems(m.items),hadItems:!!m.items};sheet()}
   else if(a==='metric'){S.metric=el.dataset.m;render(1)}
   else if(a==='sum'){
     const{w,f,t,l}=el.dataset,k=sumKey(w,f,t);S.sums[k]={loading:1};render();
@@ -344,9 +404,22 @@ document.addEventListener('click',async e=>{
   else if(a==='estimate')estimate();
   else if(a==='cancel'){SH=null;sheet()}
   else if(a==='mult')setMult(+el.dataset.m);
+  else if(a==='itq'){const it=SH.items[+el.dataset.i];it.q=Math.max(0,Math.round((it.q+ +el.dataset.d)*100)/100);el.closest('.it').querySelector('.in-q').value=it.q;recalc()}
+  else if(a==='itdel'){syncSH();SH.items.splice(+el.dataset.i,1);if(SH.items.length)recalc();else{SH.items=null;SH.v={}}sheet()}
   else if(a==='mstep')setMult(Math.max(.1,Math.round((SH.mult+ +el.dataset.d)*100)/100));
   else if(a==='save')save();
   else if(a==='goals')goalsSheet();
+  else if(a==='testh'){const v=(navigator.userAgent.match(/OS (\d+)[_.](\d+)/)||[]);try{hapEl.click();setTimeout(()=>hapEl.click(),120)}catch(x){}
+    $('#fbnote').textContent='Did you feel two taps? If not: this needs iOS 17.4 or newer (yours: '+(v[1]?v[1]+'.'+v[2]:'unknown')+'), and Settings → Sounds & Haptics → System Haptics must be on. Some iPhones don’t allow it from a web page at all.'}
+  else if(a==='tests'){unlockAudio();beep([659,880],.14,.12);$('#fbnote').textContent='Did you hear two notes? If not: turn off silent mode (the side switch), raise the ringer volume, and make sure the “Sounds” box above is ticked.'}
+  else if(a==='clearcache'){ls('plate-cache','');ls('plate-sum','');try{sessionStorage.setItem('plate-boot','0')}catch(x){}location.reload()}
+  else if(a==='diag'){
+    const out=[],box=$('#diag');box.innerHTML='<div class="ai"><span class="spin"></span>Checking…</div>';
+    const step=async(n,fn)=>{const t=Date.now();try{await fn();out.push('✅ '+n+' ('+((Date.now()-t)/1000).toFixed(1)+'s)')}catch(e){out.push('❌ '+n+': '+e.message)}box.innerHTML='<div class="ai" style="color:var(--ink)">'+out.map(esc).join('<br>')+'</div>'};
+    await step('Backend reachable',()=>api('ping'));
+    await step('Meals load',()=>api('list',{who:me(),since:addD(TODAY,-7),thumbSince:TODAY}));
+    await step('AI answers',()=>api('ai',{text:'one boiled egg'}));
+  }
   else if(a==='invite'){const link=location.origin+location.pathname+'#u='+encodeURIComponent(cfg.url)+'&k='+encodeURIComponent(cfg.key);
     if(navigator.share)navigator.share({title:'Plate',text:'Open this link to join our Plate tracker, then enter your name:',url:link}).catch(()=>{});
     else if(navigator.clipboard)navigator.clipboard.writeText(link).then(()=>toast('Link copied'))}
@@ -362,6 +435,6 @@ document.addEventListener('change',e=>{
 });
 $('#file').addEventListener('change',e=>onFile(e.target.files[0]));
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cfg)load()});
-setInterval(()=>{if(cfg&&!document.hidden)load(true)},60000);
-render();if(cfg)load();
+setInterval(()=>{if(cfg&&!document.hidden&&!SAFE)load(true)},60000);
+render();if(SAFE)toast('Safe mode: the page crashed earlier, so animations and saved copies are switched off.');if(cfg)load();
 </script></body></html>
