@@ -50,6 +50,7 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:8px 4px;b
 .big{font-size:34px;font-weight:800;letter-spacing:-1px}.lg{display:flex;gap:14px;font-size:13px;color:var(--mute);margin-top:6px}.lg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}
 .rw{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:14px}.rw span:first-child{width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rw .bar{flex:1}.rw span:last-child{width:70px;text-align:right;color:var(--mute)}
 .sheet input[type=checkbox],input[type=checkbox]{width:22px;height:22px;padding:0;flex:none;margin:0}
+input[type=checkbox][switch]{width:auto;height:auto}
 .spin{display:inline-block;width:16px;height:16px;border:2.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-3px;margin-right:8px}
 @keyframes sp{to{transform:rotate(360deg)}}
 .sk{background:var(--line);border-radius:20px;animation:pu 1.2s ease-in-out infinite}@keyframes pu{50%{opacity:.45}}
@@ -245,7 +246,7 @@ function sheet(){
   +(SH.manual?'<label>Describe what you ate</label><div class="row"><input id="f-txt" value="'+esc(SH.txt||'')+'" placeholder="e.g. 2 roti canai with dhal and teh tarik"><button class="sec" style="flex:none;padding:0 14px;border-radius:12px;border:0;font:inherit;font-weight:700;color:var(--acc)" data-act="estimate">Estimate</button></div>'+(rec.length?'<label style="margin-top:12px">Recent meals</label><div class="chips">'+rec.map((m,i)=>'<button data-act="recent" data-i="'+i+'">'+esc(m.name)+'</button>').join('')+'</div>':''):'')
   +'<div class="row" style="margin:12px 0">'+(SH.thumb?'<img alt="" style="width:84px;height:84px;border-radius:18px;object-fit:cover" src="'+esc(SH.thumb)+'">':'')+'<div style="flex:1"><label>Meal name</label><input id="f-name" value="'+esc(SH.name||'')+'" placeholder="e.g. Nasi lemak"><div style="height:8px"></div><label>Type</label><select id="f-type">'+['Breakfast','Lunch','Dinner','Snack'].map(x=>'<option'+(x===SH.type?' selected':'')+'>'+x+'</option>').join('')+'</select></div></div>'
   +(SH.loading?'<div class="ai"><span class="spin"></span>'+esc(SH.step||'Working…')+'</div>':SH.err?'<div class="ai w">'+esc(SH.err)+'</div>':a?'<div class="ai">✨ AI estimate · '+esc(a.confidence||'medium')+' confidence'+(a.note?' – '+esc(a.note):'')+'</div>':'')
-  +(SH.loading?'':'<div style="margin:10px 0 4px"><label>Ingredients'+(SH.items?'':' (optional – pick from the list)')+'</label>'+(SH.items?'<p class="note" style="margin:0 0 8px">Numbers are per serving; quantity multiplies them. Totals update automatically.</p><div id="items">'+itemsHTML()+'</div>':'')+'<select id="f-pick" aria-label="Add ingredient">'+PICK+'</select></div>')
+  +(SH.loading?'':'<div style="margin:10px 0 4px"><label>Ingredients'+(SH.items?'':' (optional – pick from the list)')+'</label>'+(SH.items?'<p class="note" style="margin:0 0 8px">Change a name and the AI estimates it for you; edit the numbers after. Tap ✨ to re-estimate (e.g. after changing the serving). Numbers are per serving; quantity multiplies them.</p><div id="items">'+itemsHTML()+'</div>':'')+'<select id="f-pick" aria-label="Add ingredient">'+PICK+'</select></div>')
   +(SH.base&&!SH.items?'<label>Portion size</label><div class="chips">'+[.5,1,1.5,2,3].map(m=>'<button data-act="mult" data-m="'+m+'" class="'+(SH.mult===m?'on':'')+'">'+({.5:'½×',1:'1×',1.5:'1½×',2:'2×',3:'3×'}[m])+'</button>').join('')+'</div><div class="row" style="align-items:center;margin:6px 0 2px"><button class="ib" style="flex:none;background:var(--bg)" data-act="mstep" data-d="-0.25" aria-label="Smaller portion">−</button><input id="f-mult" type="number" inputmode="decimal" step="0.05" min="0.1" value="'+SH.mult+'" style="text-align:center" aria-label="Custom portion multiplier"><button class="ib" style="flex:none;background:var(--bg)" data-act="mstep" data-d="0.25" aria-label="Bigger portion">+</button></div><p class="note" style="margin:2px 0 0">Type any amount, e.g. 1.25 or 2.5 portions</p>':'')
   +'<div class="g2">'+[['kcal','Calories'],['p','Protein (g)'],['c','Carbs (g)'],['f','Fat (g)']].map(([k,l])=>'<div><label>'+l+'</label><input type="number" inputmode="decimal" min="0" id="f-'+k+'" value="'+(SH.v[k]==null?'':SH.v[k])+'"'+(SH.items?' readonly':'')+'></div>').join('')+'</div>'
   +'<div class="btns"><button class="sec" data-act="cancel">Cancel</button><button class="pri" data-act="save" '+(SH.loading?'disabled':'')+'>Save meal</button></div></div></div>';const sn=L.querySelector('.sheet');if(sn)sn.scrollTop=st;
@@ -296,7 +297,7 @@ async function save(){
 }
 function goalsSheet(){
   const g=goals(me());
-  $('#layer').innerHTML='<div class="scrim" data-act="scrim"><div class="sheet"><div class="grab"></div><h2>Your daily goals</h2><div class="g2"><div><label>Calories</label><input type="number" inputmode="numeric" id="g-k" value="'+g.k+'"></div><div><label>Protein (g)</label><input type="number" inputmode="numeric" id="g-p" value="'+g.p+'"></div></div><label>Email me when my partner logs a meal (optional)</label><input type="email" id="g-e" value="'+esc((S.people[me()]||{}).email||'')+'" placeholder="you@gmail.com"><label style="display:flex;align-items:center;gap:10px;font-size:16px;color:var(--ink);margin:14px 0 6px"><input type="checkbox" id="g-h" '+(ls('plate-hap')==='off'?'':'checked')+'> Haptic feedback (vibration)</label><label style="display:flex;align-items:center;gap:10px;font-size:16px;color:var(--ink);margin:0 0 10px"><input type="checkbox" id="g-s" '+(ls('plate-snd')==='off'?'':'checked')+'> Sounds</label><div class="btns" style="margin:0 0 6px"><button class="sec" data-act="testh">📳 Test vibration</button><button class="sec" data-act="tests">🔊 Test sound</button></div><p class="note" id="fbnote" style="margin:0 0 10px"></p><p class="note">Signed in as '+esc(me())+'. Carbs and fat targets are set at 50% and 30% of calories.</p><div id="diag" style="margin:0 0 10px"></div><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="clearcache">🧹 Clear saved data on this phone</button></div><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="diag">🔍 Check connection</button></div><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="invite">🔗 Share setup link with partner</button></div><div class="btns"><button class="sec" data-act="reset">Sign out</button><button class="pri" data-act="savegoals">Save goals</button></div></div></div>';
+  $('#layer').innerHTML='<div class="scrim" data-act="scrim"><div class="sheet"><div class="grab"></div><h2>Your daily goals</h2><div class="g2"><div><label>Calories</label><input type="number" inputmode="numeric" id="g-k" value="'+g.k+'"></div><div><label>Protein (g)</label><input type="number" inputmode="numeric" id="g-p" value="'+g.p+'"></div></div><label>Email me when my partner logs a meal (optional)</label><input type="email" id="g-e" value="'+esc((S.people[me()]||{}).email||'')+'" placeholder="you@gmail.com"><label style="display:flex;align-items:center;gap:10px;font-size:16px;color:var(--ink);margin:14px 0 6px"><input type="checkbox" switch id="g-h" '+(ls('plate-hap')==='off'?'':'checked')+'> Haptic feedback (vibration)</label><label style="display:flex;align-items:center;gap:10px;font-size:16px;color:var(--ink);margin:0 0 10px"><input type="checkbox" id="g-s" '+(ls('plate-snd')==='off'?'':'checked')+'> Sounds</label><label style="margin:0 0 4px">Sound follows</label><select id="g-sm" style="margin-bottom:10px"><option value="ringer"'+(sndMode()==='ringer'?' selected':'')+'>Ringer (muted by the silent switch)</option><option value="media"'+(sndMode()==='media'?' selected':'')+'>Media volume (plays in silent mode)</option></select><div class="btns" style="margin:0 0 6px"><button class="sec" data-act="testh">📳 Test vibration</button><button class="sec" data-act="tests">🔊 Test sound</button></div><p class="note" id="fbnote" style="margin:0 0 10px"></p><p class="note">Signed in as '+esc(me())+'. Carbs and fat targets are set at 50% and 30% of calories.</p><div id="diag" style="margin:0 0 10px"></div><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="clearcache">🧹 Clear saved data on this phone</button></div><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="diag">🔍 Check connection</button></div><div class="btns" style="margin:0 0 10px"><button class="sec" data-act="invite">🔗 Share setup link with partner</button></div><div class="btns"><button class="sec" data-act="reset">Sign out</button><button class="pri" data-act="savegoals">Save goals</button></div></div></div>';
 }
 
 /* ---------- ingredients ---------- */
@@ -312,7 +313,7 @@ function parseItems(s){try{const a=JSON.parse(s);return Array.isArray(a)&&a.leng
 function itemsStr(){if(!SH.items||!SH.items.length)return'';const s=JSON.stringify(SH.items.map(i=>[i.n,i.u,Math.round(i.q*100)/100,i.k,i.p,i.c,i.f]));return s.length<3000?s:''}
 const r1=x=>Math.round(x*10)/10;
 function itemsHTML(){
-  return SH.items.map((i,n)=>'<div class="it" data-i="'+n+'"><div class="row" style="gap:8px;align-items:center"><input class="in-n" value="'+esc(i.n)+'" placeholder="Ingredient" aria-label="Ingredient name"><button class="x" data-act="itdel" data-i="'+n+'" aria-label="Remove ingredient">✕</button></div>'
+  return SH.items.map((i,n)=>'<div class="it" data-i="'+n+'"><div class="row" style="gap:8px;align-items:center"><input class="in-n" value="'+esc(i.n)+'" placeholder="Ingredient" aria-label="Ingredient name"><button class="x" data-act="itest" data-i="'+n+'" aria-label="Estimate this ingredient with AI" title="Estimate with AI">✨</button><button class="x" data-act="itdel" data-i="'+n+'" aria-label="Remove ingredient">✕</button></div>'
    +'<div class="row" style="gap:8px;align-items:center;margin:6px 0"><button class="ib" style="flex:none;background:var(--bg)" data-act="itq" data-i="'+n+'" data-d="-0.25" aria-label="Less">−</button><input class="in-q" type="number" step="0.05" min="0" inputmode="decimal" value="'+i.q+'" style="width:76px;flex:none;text-align:center" aria-label="Quantity"><button class="ib" style="flex:none;background:var(--bg)" data-act="itq" data-i="'+n+'" data-d="0.25" aria-label="More">+</button><input class="in-u" value="'+esc(i.u)+'" placeholder="per serving, e.g. 1 cup" aria-label="Serving size"></div>'
    +'<div class="g4i">'+[['k','kcal'],['p','Protein'],['c','Carbs'],['f','Fat']].map(([k,l])=>'<div><label>'+l+'</label><input class="in-'+k+'" type="number" min="0" inputmode="decimal" value="'+r1(i[k])+'"></div>').join('')+'</div>'
    +'<div class="note it-t">= '+Math.round(i.k*i.q)+' kcal · P '+Math.round(i.p*i.q)+' · C '+Math.round(i.c*i.q)+' · F '+Math.round(i.f*i.q)+'</div></div>').join('');
@@ -334,6 +335,23 @@ function addItem(v){
   if(v==='custom')SH.items.push({n:'',u:'1 serving',q:1,k:0,p:0,c:0,f:0});
   else{const f=FOODS[+v];SH.items.push({n:f[1],u:f[2],q:1,k:f[3],p:f[4],c:f[5],f:f[6]})}
   recalc();sheet();const L=document.querySelectorAll('.it');if(L.length&&L[L.length-1].scrollIntoView)L[L.length-1].scrollIntoView({block:'nearest'});
+}
+
+async function estItem(n,keep){
+  const it=SH&&SH.items&&SH.items[n];if(!it||!it.n.trim()||it._b)return;
+  it._b=1;const row=document.querySelector('.it[data-i="'+n+'"]'),note=row&&row.querySelector('.it-t');
+  if(note)note.innerHTML='<span class="spin"></span>Estimating “'+esc(it.n)+'”…';
+  try{
+    const j=await api('ing',{name:it.n,serving:keep?it.u:'',meal:SH.name||''}),r=j.result;
+    if(r.error)throw new Error(r.error);
+    if(!SH||!SH.items||SH.items[n]!==it)return;
+    it.k=+r.kcal||0;it.p=+r.protein||0;it.c=+r.carbs||0;it.f=+r.fat||0;
+    if(r.portion&&(!keep||!it.u.trim()||/^(1 serving|as entered)$/i.test(it.u.trim())))it.u=String(r.portion);
+    const rw=document.querySelector('.it[data-i="'+n+'"]');
+    if(rw){['k','p','c','f'].forEach(k=>{rw.querySelector('.in-'+k).value=r1(it[k])});rw.querySelector('.in-u').value=it.u}
+    recalc();fb('done');
+  }catch(e){toast('Couldn’t estimate “'+it.n+'”: '+e.message);if(SH&&SH.items)recalc()}
+  finally{it._b=0}
 }
 
 /* ---------- haptics + sounds ---------- */
@@ -358,8 +376,11 @@ function playWav(fr,dur,vol){
   const key=fr.join('-')+'|'+dur+'|'+vol,url=wavCache[key]||(wavCache[key]=wavUrl(fr,dur,vol));
   AUD.src=url;const p=AUD.play();return p&&p.then?p:Promise.resolve();
 }
+const sndMode=()=>ls('plate-snd-mode')==='media'?'media':'ringer';
+function setSession(){try{if(navigator.audioSession)navigator.audioSession.type=sndMode()==='media'?'playback':'ambient'}catch(e){}}
 function beep(fr,dur,vol){
-  try{playWav(fr,dur,Math.min(.8,vol*6)).catch(()=>beepWA(fr,dur,vol*3))}catch(e){beepWA(fr,dur,vol*3)}
+  if(sndMode()==='media'){try{playWav(fr,dur,Math.min(.8,vol*6)).catch(()=>beepWA(fr,dur,Math.min(.8,vol*5)))}catch(e){beepWA(fr,dur,Math.min(.8,vol*5))}}
+  else beepWA(fr,dur,Math.min(.8,vol*5));
 }
 function beepWA(fr,dur,vol){
   try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;AC=AC||new A();if(AC.state==='suspended')AC.resume();
@@ -367,7 +388,7 @@ function beepWA(fr,dur,vol){
       g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+dur);
       o.connect(g);g.connect(AC.destination);o.start(t);o.stop(t+dur+.02);t+=dur*.8})}catch(e){}
 }
-function unlockAudio(){try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}if(!AUD._u){AUD._u=1;try{playWav([1],.05,0).catch(()=>{})}catch(e){}}try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;AC=AC||new A();if(AC.state!=='running')AC.resume();const b=AC.createBuffer(1,1,22050),s=AC.createBufferSource();s.buffer=b;s.connect(AC.destination);s.start(0)}catch(e){}}
+function unlockAudio(){setSession();if(!AUD._u&&sndMode()==='media'){AUD._u=1;try{playWav([1],.05,0).catch(()=>{})}catch(e){}}try{const A=window.AudioContext||window.webkitAudioContext;if(!A)return;AC=AC||new A();if(AC.state!=='running')AC.resume();const b=AC.createBuffer(1,1,22050),s=AC.createBufferSource();s.buffer=b;s.connect(AC.destination);s.start(0)}catch(e){}}
 function tap(){haptic(1);unlockAudio()}
 function fb(k){
   haptic(k==='ok'||k==='done'?2:1);
@@ -376,6 +397,8 @@ function fb(k){
 }
 document.addEventListener('change',e=>{
   if(e.target.id==='f-pick')addItem(e.target.value);
+  if(e.target.classList&&e.target.classList.contains('in-n')){const row=e.target.closest('.it');if(row&&SH&&SH.items&&e.target.value.trim())estItem(+row.dataset.i,false)}
+  if(e.target.id==='g-sm'){ls('plate-snd-mode',e.target.value);setSession();unlockAudio();beep([659,880],.15,.2)}
   if(e.target.id==='g-h'){ls('plate-hap',e.target.checked?'on':'off');if(e.target.checked)haptic(2)}
   if(e.target.id==='g-s'){ls('plate-snd',e.target.checked?'on':'off');if(e.target.checked)beep([659,880],.11,.07)}
 });
@@ -421,14 +444,17 @@ document.addEventListener('click',async e=>{
   else if(a==='cancel'){SH=null;sheet()}
   else if(a==='mult')setMult(+el.dataset.m);
   else if(a==='itq'){const it=SH.items[+el.dataset.i];it.q=Math.max(0,Math.round((it.q+ +el.dataset.d)*100)/100);el.closest('.it').querySelector('.in-q').value=it.q;recalc()}
+  else if(a==='itest')estItem(+el.dataset.i,true);
   else if(a==='itdel'){syncSH();SH.items.splice(+el.dataset.i,1);if(SH.items.length)recalc();else{SH.items=null;SH.v={}}sheet()}
   else if(a==='mstep')setMult(Math.max(.1,Math.round((SH.mult+ +el.dataset.d)*100)/100));
   else if(a==='save')save();
   else if(a==='goals')goalsSheet();
   else if(a==='testh'){const v=(navigator.userAgent.match(/OS (\d+)[_.](\d+)/)||[]);try{hapEl.click();setTimeout(()=>hapEl.click(),150)}catch(x){}
-    $('#fbnote').textContent='Vibration test sent · iOS '+(v[1]?v[1]+'.'+v[2]:'unknown')+' · '+(navigator.standalone?'Home Screen app':'Safari tab')+'. Did you feel a tap? If not: check Settings → Sounds & Haptics → System Haptics is on. If it is, your iPhone doesn’t let web pages trigger haptics, and this can’t be fixed from inside the app.'}
-  else if(a==='tests'){unlockAudio();let r='plays OK';try{await playWav([659,880],.2,.6)}catch(x){r='was blocked ('+((x&&x.name)||'error')+')'}
-    $('#fbnote').textContent='Sound '+r+' · silent-mode override: '+(navigator.audioSession?'available':'not available')+'. Did you hear two notes? If not, press the volume-up button on the side while the app is open (this controls media volume), and check the “Sounds” box above is ticked.'}
+    $('#fbnote').textContent='Vibration test sent · iOS '+(v[1]?v[1]+'.'+v[2]:'unknown')+' · '+(navigator.standalone?'Home Screen app':'Safari tab')+'. Now flip the Haptic switch above with your finger: if that doesn’t buzz either, this iPhone isn’t allowing haptics from web pages. Also check Settings → Sounds & Haptics → System Haptics, and “Play Haptics in Silent Mode” if you use silent mode.'}
+  else if(a==='tests'){unlockAudio();let r;
+    if(sndMode()==='media'){try{await playWav([659,880],.2,.6);r='plays OK'}catch(x){r='was blocked ('+((x&&x.name)||'error')+')'}}
+    else{beepWA([659,880],.2,.6);r='sent (audio engine: '+(AC?AC.state:'unavailable')+')'}
+    $('#fbnote').textContent='Sound '+r+' · follows '+(sndMode()==='media'?'media volume':'the ringer')+'. In ringer mode the side switch must not be on silent, and loudness follows your ringer level. Heard nothing? Set “Sound follows” to Media volume.'}
   else if(a==='clearcache'){ls('plate-cache','');ls('plate-sum','');try{sessionStorage.setItem('plate-boot','0')}catch(x){}location.reload()}
   else if(a==='diag'){
     const out=[],box=$('#diag');box.innerHTML='<div class="ai"><span class="spin"></span>Checking…</div>';
